@@ -33,7 +33,10 @@ function [zprojectedImage, method, frames] = zprojectImageStackWithPreview(image
     
     % preview
     if ~exist('uiImagePreviewHandle', 'var')
-        tempFig = figure('Name', 'Z-Project', 'numbertitle', 'off');
+        tempFig = figure('Name', 'Z-Project', ...
+            'numbertitle', 'off', ...
+            'Units', 'normalized', ...
+            'Position', [0 0 1 1]);
         ax = axes(tempFig, ...
             'XTick', [], ...
             'YTick', [], ...
@@ -60,7 +63,7 @@ function [zprojectedImage, method, frames] = zprojectImageStackWithPreview(image
     y = y - lh;
     uicontrol(dlg, 'Style', 'text', 'String', 'Frames', ...
         'Units', 'pixels', 'Position', [0, y, w/2, lh]);
-    uicontrol(dlg, 'Style', 'edit', 'String', [ num2str(frames(1)) '-' num2str(frames(end))], ...
+    uicontrol(dlg, 'Style', 'edit', 'String', [num2str(frames(1)) '-' num2str(frames(end))], ...
         'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
         'Callback', @setFrames_);
     y = 0;
@@ -93,10 +96,16 @@ function [zprojectedImage, method, frames] = zprojectImageStackWithPreview(image
         showZProjection_();
     end
     function setFrames_(edit, varargin)
-        firstlast = split(edit.String, '-');
-        first = str2num(firstlast{1});
-        last = str2num(firstlast{2});
-        frames = max(1, first):min(last, nframes);
+        str = strtrim(edit.String);
+        if isempty(str)
+            frames = 1:nframes;
+            edit.String = [num2str(frames(1)) '-' num2str(frames(end))];
+        else
+            firstlast = split(str, '-');
+            first = str2num(firstlast{1});
+            last = str2num(firstlast{2});
+            frames = max(1, first):min(last, nframes);
+        end
         showZProjection_();
     end
     
