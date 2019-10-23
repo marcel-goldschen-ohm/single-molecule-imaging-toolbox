@@ -2,15 +2,8 @@ function [filteredImage, sigma] = gaussianFilterImageWithPreview(originalImage, 
 
 % filteredImage = imgaussfilt(originalImage, sigma);
 %
-% uiImagePreviewHandle: handle to image graphics object for live preview
-%
-% If sigma is specified, simply return the filtered image as above. No UI
-% dialogs or images are shown.
-%
-% If sigma = [] or does not exist, popup a dialog for editing sigma and
-% update uiImagePreviewHandle live to show the filtered image for the current
-% value of sigma. If uiImagePreviewHandle does not exist, create a new figure for
-% the live update of the filtered image.
+% uiImagePreviewHandle: Optional handle to image graphics object for live preview.
+%                       If not specified, a temproraty figure will be created for the preview.
 %
 % !!! The fitlered image is only returned if the dialog's OK button is
 % pressed, the cancel button will return an empty image.
@@ -42,7 +35,7 @@ function [filteredImage, sigma] = gaussianFilterImageWithPreview(originalImage, 
         axis(ax, 'image');
     end
     
-    % dialog
+    % parameter dialog
     dlg = dialog('Name', 'Gaussian Filter');
     w = 200;
     lh = 20;
