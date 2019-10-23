@@ -143,7 +143,7 @@ function [xy, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFil
     end
     
     % find maxima
-    function [xy_, im_] = findMaxima_(slowButSureMergeOfNearbyMaxima)
+    function [xy_, im_] = findMaxima_(fastButApproxMergeOfNearbyMaxima)
         xy_ = [];
         im_ = im;
         try
@@ -155,81 +155,8 @@ function [xy, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFil
                 im_ = imgaussfilt(im_, gaussFilterSigma);
             end
             
-            % find maxima along each row of image
-            im_ = double(im_);
-            nrows = size(im_,1);
-            ncols = size(im_,2);
-            for row = 1:nrows
-                [~,x] = findpeaks(im_(row,:), ...
-                    'MinPeakProminence', minPeakProminence, 'MinPeakDistance', minPeakSeparation);
-                if ~isempty(x)
-                    x = reshape(x,[],1);
-                    y = repmat(row, size(x));
-                    xy_ = [xy_; [x y]];
-                end
-            end
-            if isempty(xy_)
-                return
-            end
-            
-            % fast merge nearby maxima (could miss a few)
-            % Two repeats usually merges most if not all nearby maxima.
-            % Afterwards we'll use a more computationally expensive algorithm to make
-            % sure all nearby maxima are merged.
-            for repeat = 1:2
-                newxy = [];
-                didMergeMaxima = false;
-                while ~isempty(xy_)
-                    dists = sqrt(sum((xy_ - repmat(xy_(1,:), [size(xy_,1), 1])).^2, 2));
-                    near = find(dists < minPeakSeparation);
-                    if numel(near) == 1
-                        newxy = [newxy; xy_(1,:)];
-                        xy_(1,:) = [];
-                    else
-                        peaks = zeros([1, numel(near)]);
-                        for j = 1:numel(near)
-                            peaks(j) = im(xy_(near(j),2), xy_(near(j),1));
-                        end
-                        [~,idx] = max(peaks);
-                        idx = near(idx(1));
-                        newxy = [newxy; xy_(idx,:)];
-                        xy_(near,:) = [];
-                        didMergeMaxima = true;
-                    end
-                end
-                xy_ = newxy;
-                if ~didMergeMaxima
-                    break
-                end
-            end
-            
-            % make sure all nearby maxima get merged
-            % This is slow, so helps to limit the number of maxima before doing this.
-            if exist('slowButSureMergeOfNearbyMaxima', 'var') && ~slowButSureMergeOfNearbyMaxima
-                % return now if we specified NOT to do the slow merge
-                return
-            end
-            pd = squareform(pdist(xy_));
-            pd(logical(eye(size(pd,1)))) = inf; % to keep min() from returning diag elements
-            [mind, ind] = min(pd(:));
-            while mind < minPeakSeparation
-                [i,j] = ind2sub(size(pd), ind);
-                rowi = xy_(i,2);
-                coli = xy_(i,1);
-                rowj = xy_(j,2);
-                colj = xy_(j,1);
-                % remove maxima with smallest pixel intensity
-                % this isn't a perfect logic, but it works pretty well in practice
-                if im(rowi,coli) >= im(rowj,colj)
-                    k = j;
-                else
-                    k = i;
-                end
-                xy_(k,:) = [];
-                pd(:,k) = [];
-                pd(k,:) = [];
-                [mind, ind] = min(pd(:));
-            end
+            % find maxima
+            xy_ = findImageMaxima(im_, minPeakProminence, minPeakSeparation, fastButApproxMergeOfNearbyMaxima);
         catch
             xy_ = [];
         end
@@ -237,7 +164,7 @@ function [xy, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFil
 
     % live update of maxima as dialog parameters are changed
     function showMaxima_()
-        [xy_, im_] = findMaxima_(false); % approx but fast merging of nearby maxima for live update
+        [xy_, im_] = findMaxima_(true); % approx but fast merging of nearby maxima for live update
         if ~isempty(im_)
             I = imadjust(uint16(im_));
             rgb = cat(3,I,I,I);
@@ -255,6 +182,6 @@ function [xy, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFil
     end
 
     if ok % else cancel button was pressed in dialog
-        xy = findMaxima_(true); % slow but sure merging of all nearby maxima
+        xy = findMaxima_(false); % slow but sure merging of all nearby maxima
     end
 end
