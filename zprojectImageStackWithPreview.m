@@ -1,12 +1,12 @@
 function [zprojectedImage, method, frames] = zprojectImageStackWithPreview(imageStack, method, frames, uiImagePreviewHandle)
 
-% If method and frames are specified, simply return the z-projected image.
-% No UI dialogs or images are shown.
+% zprojectedImage: z-projection of image stack frames according to method.
 %
-% If method or frames are empty or do not exist, popup a dialog for editing
-% them and update uiImageHandle live to show the z-projected image for the
-% current values of method and frames. If uiImageHandle does not exist,
-% create a new figure for the live update of the z-projected image.
+% uiImagePreviewHandle: Optional handle to image graphics object for live preview.
+%                       If not specified, a temporary figure will be created for the preview.
+%
+% Pops up a dialog to edit parameters and shows a live preview of the
+% z-projected image.
 %
 % !!! The z-projected image is only returned if the dialog's OK button is
 % pressed, the cancel button will return an empty image.
@@ -21,45 +21,65 @@ function [zprojectedImage, method, frames] = zprojectImageStackWithPreview(image
         return
     end
     
-    % dialog with parameter settings
     methods = {'Mean', 'Min', 'Max'};
-    ok = true;
-    if ~exist('method', 'var') || ~exist('frames', 'var') ...
-            || isempty(method) || isempty(frames)
-        if ~exist('frames', 'var') || isempty(frames)
-            frames = 1:nframes;
-        end
-        if ~exist('method', 'var') || isempty(method)
-            method = 'Mean';
-        end
-        d = dialog('Name', 'Z-Project');
-        d.Position(3) = 200;
-        d.Position(4) = 70;
-        uicontrol(d, 'Style', 'text', 'String', 'Method', ...
-            'Units', 'normalized', 'Position', [0, 0.7, 0.5, 0.3]);
-        uicontrol(d, 'Style', 'popupmenu', 'String', methods, ...
-            'Units', 'normalized', 'Position', [0.5, 0.7, 0.5, 0.3], ...
-            'Callback', @setMethod_);
-        uicontrol(d, 'Style', 'text', 'String', 'Frames', ...
-            'Units', 'normalized', 'Position', [0, 0.4, 0.5, 0.3]);
-        uicontrol(d, 'Style', 'edit', 'String', [ num2str(frames(1)) '-' num2str(frames(end))], ...
-            'Units', 'normalized', 'Position', [0.5, 0.4, 0.5, 0.3], ...
-            'Callback', @setFrames_);
-        uicontrol(d, 'Style', 'pushbutton', 'String', 'OK', ...
-            'Units', 'normalized', 'Position', [0.1, 0, 0.4, 0.4], ...
-            'Callback', @ok_);
-        uicontrol(d, 'Style', 'pushbutton', 'String', 'Cancel', ...
-            'Units', 'normalized', 'Position', [0.5, 0, 0.4, 0.4], ...
-            'Callback', 'delete(gcf)');
-        ok = false; % OK dialog button will set back to true
-        showZProjection_();
-        uiwait(d);
+    
+    % default parameters
+    if ~exist('method', 'var') || isempty(method)
+        method = 'Mean';
     end
+    if ~exist('frames', 'var') || isempty(frames)
+        frames = 1:nframes;
+    end
+    
+    % preview
+    if ~exist('uiImagePreviewHandle', 'var')
+        tempFig = figure('Name', 'Z-Project', 'numbertitle', 'off');
+        ax = axes(tempFig, ...
+            'XTick', [], ...
+            'YTick', [], ...
+            'YDir', 'reverse');
+        uiImagePreviewHandle = image(ax, [], ...
+            'HitTest', 'off', ...
+            'PickableParts', 'none');
+        axis(ax, 'image');
+    end
+    
+    % parameter dialog
+    dlg = dialog('Name', 'Z-Project');
+    w = 200;
+    lh = 20;
+    h = 2*lh + 30;
+    dlg.Position(3) = w;
+    dlg.Position(4) = h;
+    y = h - lh;
+    uicontrol(dlg, 'Style', 'text', 'String', 'Method', ...
+        'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+    uicontrol(dlg, 'Style', 'popupmenu', 'String', methods, ...
+        'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+        'Callback', @setMethod_);
+    y = y - lh;
+    uicontrol(dlg, 'Style', 'text', 'String', 'Frames', ...
+        'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+    uicontrol(dlg, 'Style', 'edit', 'String', [ num2str(frames(1)) '-' num2str(frames(end))], ...
+        'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+        'Callback', @setFrames_);
+    y = 0;
+    uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
+        'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
+        'Callback', @ok_);
+    uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
+        'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
+        'Callback', 'delete(gcf)');
+    
+    % block until dialog closed
+    ok = false; % OK dialog button will set back to true
+    showZProjection_();
+    uiwait(dlg);
 
     % dialog OK callback
     function ok_(varargin)
         ok = true;
-        delete(d);
+        delete(dlg);
     end
 
     % dialog parameter callbacks
@@ -96,25 +116,13 @@ function [zprojectedImage, method, frames] = zprojectImageStackWithPreview(image
 
     % live update of z-projected image as dialog parameters are changed
     function showZProjection_()
-        if ~exist('uiImageHandle', 'var')
-            f = figure('Name', 'Z-Project', ...
-                'numbertitle', 'off');
-            ax = axes(f, ...
-                'XTick', [], ...
-                'YTick', [], ...
-                'YDir', 'reverse');
-            uiImageHandle = image(ax, [], ...
-                'HitTest', 'off', ...
-                'PickableParts', 'none');
-            axis(ax, 'image');
-        end
         im = getZProjection_();
         if ~isempty(im)
             I = imadjust(uint16(im));
             rgb = cat(3,I,I,I);
-            uiImageHandle.CData = rgb;
-            uiImageHandle.XData = [1 size(rgb,2)];
-            uiImageHandle.YData = [1 size(rgb,1)];
+            uiImagePreviewHandle.CData = rgb;
+            uiImagePreviewHandle.XData = [1 size(rgb,2)];
+            uiImagePreviewHandle.YData = [1 size(rgb,1)];
         end
     end
 
