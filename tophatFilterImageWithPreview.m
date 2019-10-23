@@ -2,16 +2,8 @@ function [filteredImage, diskRadius] = tophatFilterImageWithPreview(originalImag
 
 % filteredImage = imtophat(originalImage, strel('disk', diskRadius));
 %
-% uiImagePreviewHandle: handle to image graphics object for live preview
-%
-% If diskRadius is specified, simply return the filtered image as above. No
-% UI dialogs or images are shown.
-%
-% If diskRadius = [] or does not exist, popup a dialog for editing
-% diskRadius and update uiImagePreviewHandle live to show the filtered
-% image for the current value of diskRadius. If uiImagePreviewHandle does
-% not exist, create a new temporary figure for the live update of the
-% filtered image.
+% uiImagePreviewHandle: Optional handle to image graphics object for live preview.
+%                       If not specified, a temproraty figure will be created for the preview.
 %
 % !!! The fitlered image is only returned if the dialog's OK button is
 % pressed, the cancel button will return an empty image.
@@ -25,53 +17,53 @@ function [filteredImage, diskRadius] = tophatFilterImageWithPreview(originalImag
         return
     end
     
-    % dialog with parameter settings
-    ok = true;
+    % default parameters
     if ~exist('diskRadius', 'var') || isempty(diskRadius)
-        % default radius
         diskRadius = 2;
-        
-        % preview image filter
-        if ~exist('uiImagePreviewHandle', 'var')
-            tempFig = figure('Name', 'Tophat Filter', 'numbertitle', 'off');
-            ax = axes(tempFig, ...
-                'XTick', [], ...
-                'YTick', [], ...
-                'YDir', 'reverse');
-            uiImagePreviewHandle = image(ax, [], ...
-                'HitTest', 'off', ...
-                'PickableParts', 'none');
-            axis(ax, 'image');
-        end
-        
-        % dialog
-        dlg = dialog('Name', 'Tophat Filter');
-        w = 200;
-        lh = 20;
-        h = lh + 30;
-        dlg.Position(3) = w;
-        dlg.Position(4) = h;
-        y = h - lh;
-        uicontrol(dlg, 'Style', 'text', 'String', 'Disk Radius', ...
-            'Units', 'pixels', 'Position', [0, y, w/2, lh]);
-        uicontrol(dlg, 'Style', 'edit', 'String', num2str(diskRadius), ...
-            'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
-            'Callback', @setDiskRadius_);
-        y = 0;
-        uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
-            'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
-            'Callback', @ok_);
-        uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
-            'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
-            'Callback', 'delete(gcf)');
-        ok = false; % OK dialog button will set back to true
-        showFilteredImage_();
-        uiwait(dlg);
-        
-        % run this after dialog is closed
-        if exist('tempFig', 'var')
-            delete(tempFig);
-        end
+    end
+
+    % preview image filter
+    if ~exist('uiImagePreviewHandle', 'var')
+        tempFig = figure('Name', 'Tophat Filter', 'numbertitle', 'off');
+        ax = axes(tempFig, ...
+            'XTick', [], ...
+            'YTick', [], ...
+            'YDir', 'reverse');
+        uiImagePreviewHandle = image(ax, [], ...
+            'HitTest', 'off', ...
+            'PickableParts', 'none');
+        axis(ax, 'image');
+    end
+    
+    % dialog
+    dlg = dialog('Name', 'Tophat Filter');
+    w = 200;
+    lh = 20;
+    h = lh + 30;
+    dlg.Position(3) = w;
+    dlg.Position(4) = h;
+    y = h - lh;
+    uicontrol(dlg, 'Style', 'text', 'String', 'Disk Radius', ...
+        'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+    uicontrol(dlg, 'Style', 'edit', 'String', num2str(diskRadius), ...
+        'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+        'Callback', @setDiskRadius_);
+    y = 0;
+    uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
+        'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
+        'Callback', @ok_);
+    uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
+        'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
+        'Callback', 'delete(gcf)');
+    
+    % block until dialog closed
+    ok = false; % OK dialog button will set back to true
+    showFilteredImage_();
+    uiwait(dlg);
+
+    % run this after dialog is closed
+    if exist('tempFig', 'var')
+        delete(tempFig);
     end
     
     % dialog OK callback
