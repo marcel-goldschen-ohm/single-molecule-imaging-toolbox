@@ -3,7 +3,7 @@ function [filteredImage, sigma] = gaussianFilterImageWithPreview(originalImage, 
 % filteredImage = imgaussfilt(originalImage, sigma);
 %
 % uiImagePreviewHandle: Optional handle to image graphics object for live preview.
-%                       If not specified, a temproraty figure will be created for the preview.
+%                       If not specified, a temporary figure will be created for the preview.
 %
 % Pops up a dialog to edit parameters and shows a live preview of the
 % filtered image.
