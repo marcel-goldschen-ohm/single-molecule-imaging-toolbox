@@ -1,14 +1,12 @@
-function [thresholdedMask, threshold] = thresholdImageWithPreview(originalImage, threshold, uiImageHandle)
+function [thresholdedMask, threshold] = thresholdImageWithPreview(originalImage, threshold, uiImagePreviewHandle)
 
 % thresholdedMask = originalImage > threshold;
 %
-% If threshold is specified, simply return the thresholded mask as above.
-% No UI dialogs or images are shown.
+% uiImagePreviewHandle: Optional handle to image graphics object for live preview.
+%                       If not specified, a temporary figure will be created for the preview.
 %
-% If threshold = [] or does not exist, popup a dialog for editing threshold
-% and update uiImageHandle live to show the thresholded mask for the
-% current value of threshold. If uiImageHandle does not exist, create a new
-% figure for the live update of the thresholded mask.
+% Pops up a dialog for editing parameters (slider for threshold) and shows
+% a live preview of the thresholded mask.
 %
 % !!! The thresholded mask is only returned if the dialog's OK button is
 % pressed, the cancel button will return an empty mask.
@@ -22,50 +20,77 @@ function [thresholdedMask, threshold] = thresholdImageWithPreview(originalImage,
         return
     end
     
-    % dialog with parameter settings
-    ok = true;
+    % default parameters
     if ~exist('threshold', 'var') || isempty(threshold)
         threshold = mean(originalImage(:));
-        d = dialog('Name', 'Threshold');
-        d.Position(3) = 500;
-        d.Position(4) = 70;
-        uicontrol(d, 'Style', 'text', 'String', 'Threshold', ...
-            'Units', 'normalized', 'Position', [0, 0.7, 0.5, 0.3]);
-        thresholdEdit = uicontrol(d, 'Style', 'edit', 'String', num2str(threshold), ...
-            'Units', 'normalized', 'Position', [0.5, 0.7, 0.5, 0.3], ...
-            'Callback', @(s,e) setThreshold_());
-        mini = quantile(originalImage(:), 0.01);
-        maxi = quantile(originalImage(:), 0.99);
-        nsteps = 5000;
-        thresholdSlider = uicontrol(d, 'Style', 'slider', ...
-            'Min', mini, 'Max', maxi, 'Value', threshold, ...
-            'SliderStep', [1.0/nsteps 1.0/nsteps], ...
-            'Units', 'normalized', 'Position', [0, 0.4, 1, 0.3], ...
-            'Callback', @(s,e) thresholdMoved_());
-        addlistener(thresholdSlider, 'Value', 'PostSet', @(s,e) thresholdMoved_());
-        uicontrol(d, 'Style', 'pushbutton', 'String', 'OK', ...
-            'Units', 'normalized', 'Position', [0.1, 0, 0.4, 0.4], ...
-            'Callback', @ok_);
-        uicontrol(d, 'Style', 'pushbutton', 'String', 'Cancel', ...
-            'Units', 'normalized', 'Position', [0.5, 0, 0.4, 0.4], ...
-            'Callback', 'delete(gcf)');
-        ok = false; % OK dialog button will set back to true
-        showThresholdedMask_();
-        uiwait(d);
+    end
+    
+    % preview
+    if ~exist('uiImagePreviewHandle', 'var')
+        tempFig = figure('Name', 'Threshold', 'numbertitle', 'off');
+        ax = axes(tempFig, ...
+            'XTick', [], ...
+            'YTick', [], ...
+            'YDir', 'reverse');
+        uiImagePreviewHandle = image(ax, [], ...
+            'HitTest', 'off', ...
+            'PickableParts', 'none');
+        axis(ax, 'image');
+    end
+    
+    % parameter dialog
+    dlg = dialog('Name', 'Threshold');
+    w = 200;
+    lh = 20;
+    h = 2*lh + 30;
+    dlg.Position(3) = w;
+    dlg.Position(4) = h;
+    y = h - lh;
+    uicontrol(dlg, 'Style', 'text', 'String', 'Threshold', ...
+        'Units', 'normalized', 'Position', [0, y, w/2, lh]);
+    thresholdEdit = uicontrol(dlg, 'Style', 'edit', 'String', num2str(threshold), ...
+        'Units', 'normalized', 'Position', [w/2, y, w/2, lh], ...
+        'Callback', @(s,e) setThreshold_());
+    y = y - lh;
+    mini = quantile(originalImage(:), 0.01);
+    maxi = quantile(originalImage(:), 0.99);
+    nsteps = 5000;
+    thresholdSlider = uicontrol(dlg, 'Style', 'slider', ...
+        'Min', mini, 'Max', maxi, 'Value', threshold, ...
+        'SliderStep', [1.0/nsteps 1.0/nsteps], ...
+        'Units', 'normalized', 'Position', [0, y, w, lh], ...
+        'Callback', @(s,e) thresholdMoved_());
+    addlistener(thresholdSlider, 'Value', 'PostSet', @(s,e) thresholdMoved_());
+    y = 0;
+    uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
+        'Units', 'normalized', 'Position', [w/2-55, y, 50, 30], ...
+        'Callback', @ok_);
+    uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
+        'Units', 'normalized', 'Position', [w/2+5, y, 50, 30], ...
+        'Callback', 'delete(gcf)');
+    
+    % block until dialog closed
+    ok = false; % OK dialog button will set back to true
+    showThresholdedMask_();
+    uiwait(dlg);
+
+    % run this after dialog is closed
+    if exist('tempFig', 'var')
+        delete(tempFig);
     end
     
     % dialog OK callback
     function ok_(varargin)
         ok = true;
-        delete(d);
+        delete(dlg);
     end
     
     % dialog parameter callbacks
     function setThreshold_()
         threshold = str2num(thresholdEdit.String);
         threshold = max(thresholdSlider.Min, min(threshold, thresholdSlider.Max));
-        edit.String = num2str(threshold);
-        thresholdEdit.Value = threshold;
+        thresholdEdit.String = num2str(threshold);
+        thresholdSlider.Value = threshold;
         showThresholdedMask_();
     end
     function thresholdMoved_()
@@ -86,25 +111,13 @@ function [thresholdedMask, threshold] = thresholdImageWithPreview(originalImage,
 
     % live update of thresholded mask as dialog parameters are changed
     function showThresholdedMask_()
-        if ~exist('uiImageHandle', 'var')
-            f = figure('Name', 'Threshold', ...
-                'numbertitle', 'off');
-            ax = axes(f, ...
-                'XTick', [], ...
-                'YTick', [], ...
-                'YDir', 'reverse');
-            uiImageHandle = image(ax, [], ...
-                'HitTest', 'off', ...
-                'PickableParts', 'none');
-            axis(ax, 'image');
-        end
         mask = getThresholdedMask_();
         if ~isempty(mask)
             I = imadjust(uint16(mask));
             rgb = cat(3,I,I,I);
-            uiImageHandle.CData = rgb;
-            uiImageHandle.XData = [1 size(rgb,2)];
-            uiImageHandle.YData = [1 size(rgb,1)];
+            uiImagePreviewHandle.CData = rgb;
+            uiImagePreviewHandle.XData = [1 size(rgb,2)];
+            uiImagePreviewHandle.YData = [1 size(rgb,1)];
         end
     end
 
