@@ -10,23 +10,26 @@ function movingReg = imagesRegistrationAppWrapper(moving, fixed)
 % Created by Marcel Goldschen-Ohm
 % <goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
 
-% init
-movingReg = [];
+    % init
+    movingReg = [];
 
-% launch MATLAB's registrationEstimator app
-registrationEstimator(moving, fixed);
+    % launch MATLAB's registrationEstimator app
+    registrationEstimator(moving, fixed);
 
-% get handle to registrationEstimator uifigure
-hregest = gobjects(0);
-hfigs = findall(groot, 'type', 'Figure');
-for i = 1:numel(hfigs)
-    if hfigs(i).Name == "moving (Moving Image)  &  fixed (Fixed Image)"
-        hregest = hfigs(i);
-        break
+    % get handle to registrationEstimator uifigure
+    appFigureHandle = gobjects(0);
+    hfigs = findall(groot, 'type', 'Figure');
+    for i = 1:numel(hfigs)
+        if hfigs(i).Name == "moving (Moving Image)  &  fixed (Fixed Image)"
+            appFigureHandle = hfigs(i);
+            break
+        end
     end
-end
 
-if ~isempty(hregest)
+    if isempty(appFigureHandle)
+        return
+    end
+    
     % inform user that they need to export the alignment
     msgbox({ ...
         '1. Align images', ...
@@ -34,12 +37,16 @@ if ~isempty(hregest)
         '3. Close registration estimator window', ...
         '4. Last exported alignment will be returned.' ...
         });
+    
     % get list of base workspace variables
     vars = evalin('base', 'who()');
+    
     % block until registrationEstimator uifigure is closed
-    waitfor(hregest);
+    waitfor(appFigureHandle);
+    
     % get list of base workspace variables
     newvars = evalin('base', 'who()');
+    
     % find new base workspace variables (i.e. those exported from
     % registrationEstimator app)
     newvars = newvars(~ismember(newvars, vars));
@@ -47,6 +54,5 @@ if ~isempty(hregest)
         % return registrationEstimator app export
         movingReg = evalin('base', newvars{end});
     end
-end
 
 end
