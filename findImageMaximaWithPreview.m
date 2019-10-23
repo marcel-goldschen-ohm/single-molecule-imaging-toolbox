@@ -1,5 +1,5 @@
 function [xy, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFilterSigma] = ...
-    findImageMaxima(im, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFilterSigma, uiImagePreviewHandle)
+    findImageMaximaWithPreview(im, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFilterSigma, uiImagePreviewHandle)
 
 % xy: [x y] coords of local maxima in image im.
 % minPeakProminence: size of local peak to be considered as a maxima
@@ -36,93 +36,86 @@ function [xy, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFil
         return
     end
     
-    % default filter values -> no filtering
+    % default parameters
+    if ~exist('minPeakProminence', 'var') || isempty(minPeakProminence)
+        minPeakProminence = 1000;
+    end
+    if ~exist('minPeakSeparation', 'var') || isempty(minPeakSeparation)
+        minPeakSeparation = 3;
+    end
     if ~exist('tophatFilterRadius', 'var') || isempty(tophatFilterRadius)
-        tophatFilterRadius = 0;
+        tophatFilterRadius = 0; % no filtering
     end
     if ~exist('gaussFilterSigma', 'var') || isempty(gaussFilterSigma)
-        gaussFilterSigma = 0;
+        gaussFilterSigma = 0; % no filtering
     end
     
-    % dialog with parameter settings
-    ok = true;
-    if ~exist('minPeakProminence', 'var') || ~exist('minPeakSeparation', 'var') ...
-            || isempty(minPeakProminence) || isempty(minPeakSeparation)
-        
-        % default parameters
-        if ~exist('minPeakProminence', 'var') || isempty(minPeakProminence)
-            minPeakProminence = 1000;
-        end
-        if ~exist('minPeakSeparation', 'var') || isempty(minPeakSeparation)
-            minPeakSeparation = 3;
-        end
-        
-        % image and parent axes on which to show maxima
-        if ~exist('uiImagePreviewHandle', 'var')
-            tempFig = figure('Name', 'Find Image Maxima', 'numbertitle', 'off');
-            uiImageAxes = axes(tempFig, ...
-                'XTick', [], ...
-                'YTick', [], ...
-                'YDir', 'reverse');
-            uiImagePreviewHandle = image(uiImageAxes, [], ...
-                'HitTest', 'off', ...
-                'PickableParts', 'none');
-            axis(uiImageAxes, 'image');
-        else
-            uiImageAxes = uiImagePreviewHandle.Parent;
-        end
-        uiMaximaPreviewHandle = scatter(uiImageAxes, nan, nan, 'r+', ...
+    % image and parent axes on which to show maxima
+    if ~exist('uiImagePreviewHandle', 'var')
+        tempFig = figure('Name', 'Find Image Maxima', 'numbertitle', 'off');
+        uiImageAxes = axes(tempFig, ...
+            'XTick', [], ...
+            'YTick', [], ...
+            'YDir', 'reverse');
+        uiImagePreviewHandle = image(uiImageAxes, [], ...
             'HitTest', 'off', ...
             'PickableParts', 'none');
-        
-        % dialog
-        dlg = dialog('Name', 'Find Image Maxima');
-        w = 200;
-        lh = 20;
-        h = 4 * lh + 30;
-        dlg.Position(3) = w;
-        dlg.Position(4) = h;
-        y = h - lh;
-        uicontrol(dlg, 'Style', 'text', 'String', 'Tophat Filter Radius', ...
-            'Units', 'pixels', 'Position', [0, y, w/2, lh]);
-        uicontrol(dlg, 'Style', 'edit', 'String', num2str(tophatFilterRadius), ...
-            'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
-            'Callback', @setTophatFilterRadius_);
-        y = y - lh;
-        uicontrol(dlg, 'Style', 'text', 'String', 'Gaussian Filter Sigma', ...
-            'Units', 'pixels', 'Position', [0, y, w/2, lh]);
-        uicontrol(dlg, 'Style', 'edit', 'String', num2str(gaussFilterSigma), ...
-            'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
-            'Callback', @setGaussFilterSigma_);
-        y = y - lh;
-        uicontrol(dlg, 'Style', 'text', 'String', 'Min Peak Prominence', ...
-            'Units', 'pixels', 'Position', [0, y, w/2, lh]);
-        uicontrol(dlg, 'Style', 'edit', 'String', num2str(minPeakProminence), ...
-            'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
-            'Callback', @setMinPeakProminence_);
-        y = y - lh;
-        uicontrol(dlg, 'Style', 'text', 'String', 'Min Peak Separation', ...
-            'Units', 'pixels', 'Position', [0, y, w/2, lh]);
-        uicontrol(dlg, 'Style', 'edit', 'String', num2str(minPeakSeparation), ...
-            'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
-            'Callback', @setMinPeakSeparation_);
-        y = 0;
-        uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
-            'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
-            'Callback', @ok_);
-        uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
-            'Units', 'normalized', 'Position', [w/2+5, y, 50, 30], ...
-            'Callback', 'delete(gcf)');
-        
-        ok = false; % OK dialog button will set back to true
-        showMaxima_();
-        uiwait(dlg);
-        
-        % run this after dialog is closed
-        delete(uiMaximaPreviewHandle);
-        if exist('tempFig', 'var')
-            delete(tempFig);
-        end
+        axis(uiImageAxes, 'image');
+    else
+        uiImageAxes = uiImagePreviewHandle.Parent;
+    end
+    uiMaximaPreviewHandle = scatter(uiImageAxes, nan, nan, 'r+', ...
+        'HitTest', 'off', ...
+        'PickableParts', 'none');
+    
+    % parameter dialog
+    dlg = dialog('Name', 'Find Image Maxima');
+    w = 200;
+    lh = 20;
+    h = 4 * lh + 30;
+    dlg.Position(3) = w;
+    dlg.Position(4) = h;
+    y = h - lh;
+    uicontrol(dlg, 'Style', 'text', 'String', 'Tophat Filter Radius', ...
+        'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+    uicontrol(dlg, 'Style', 'edit', 'String', num2str(tophatFilterRadius), ...
+        'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+        'Callback', @setTophatFilterRadius_);
+    y = y - lh;
+    uicontrol(dlg, 'Style', 'text', 'String', 'Gaussian Filter Sigma', ...
+        'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+    uicontrol(dlg, 'Style', 'edit', 'String', num2str(gaussFilterSigma), ...
+        'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+        'Callback', @setGaussFilterSigma_);
+    y = y - lh;
+    uicontrol(dlg, 'Style', 'text', 'String', 'Min Peak Prominence', ...
+        'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+    uicontrol(dlg, 'Style', 'edit', 'String', num2str(minPeakProminence), ...
+        'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+        'Callback', @setMinPeakProminence_);
+    y = y - lh;
+    uicontrol(dlg, 'Style', 'text', 'String', 'Min Peak Separation', ...
+        'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+    uicontrol(dlg, 'Style', 'edit', 'String', num2str(minPeakSeparation), ...
+        'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+        'Callback', @setMinPeakSeparation_);
+    y = 0;
+    uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
+        'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
+        'Callback', @ok_);
+    uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
+        'Units', 'normalized', 'Position', [w/2+5, y, 50, 30], ...
+        'Callback', 'delete(gcf)');
+
+    % block until dialog closed
+    ok = false; % OK dialog button will set back to true
+    showMaxima_();
+    uiwait(dlg);
+
+    % run this after dialog is closed
+    delete(uiMaximaPreviewHandle);
+    if exist('tempFig', 'var')
+        delete(tempFig);
     end
     
     % dialog OK callback
