@@ -15,7 +15,7 @@ function [xy, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFil
 % Options for pre-filtering are available in the dialog too.
 %
 % If minPeakProminence and minPeakSeparation are specified, simply return
-% the located maxima. No UI dialogs or images are shown. In this case, it
+% the located maxima. No UI dialogs or image previews are shown. In this case, it
 % is assumed that all desired pre-filtering has already been applied to im.
 %
 % If minPeakProminence or minPeakSeparation are empty or do not exist,
