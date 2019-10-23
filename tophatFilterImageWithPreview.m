@@ -1,4 +1,4 @@
-function [filteredImage, diskRadius] = tophatFilterImage(originalImage, diskRadius, uiImagePreviewHandle)
+function [filteredImage, diskRadius] = tophatFilterImageWithPreview(originalImage, diskRadius, uiImagePreviewHandle)
 
 % filteredImage = imtophat(originalImage, strel('disk', diskRadius));
 %
