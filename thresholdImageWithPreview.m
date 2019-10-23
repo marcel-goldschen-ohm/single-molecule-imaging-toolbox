@@ -1,4 +1,4 @@
-function [thresholdedMask, threshold] = thresholdImage(originalImage, threshold, uiImageHandle)
+function [thresholdedMask, threshold] = thresholdImageWithPreview(originalImage, threshold, uiImageHandle)
 
 % thresholdedMask = originalImage > threshold;
 %
