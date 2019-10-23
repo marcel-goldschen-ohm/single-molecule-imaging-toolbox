@@ -76,6 +76,11 @@ function [zprojectedImage, method, frames] = zprojectImageStackWithPreview(image
     showZProjection_();
     uiwait(dlg);
 
+    % run this after dialog is closed
+    if exist('tempFig', 'var')
+        delete(tempFig);
+    end
+
     % dialog OK callback
     function ok_(varargin)
         ok = true;
