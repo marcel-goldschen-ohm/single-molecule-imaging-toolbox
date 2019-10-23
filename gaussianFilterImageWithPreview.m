@@ -5,6 +5,9 @@ function [filteredImage, sigma] = gaussianFilterImageWithPreview(originalImage, 
 % uiImagePreviewHandle: Optional handle to image graphics object for live preview.
 %                       If not specified, a temproraty figure will be created for the preview.
 %
+% Pops up a dialog to edit parameters and shows a live preview of the
+% filtered image.
+%
 % !!! The fitlered image is only returned if the dialog's OK button is
 % pressed, the cancel button will return an empty image.
 %
