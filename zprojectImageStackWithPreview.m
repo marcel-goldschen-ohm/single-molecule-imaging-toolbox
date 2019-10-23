@@ -1,4 +1,4 @@
-function [zprojectedImage, method, frames] = zprojectImageStack(imageStack, method, frames, uiImageHandle)
+function [zprojectedImage, method, frames] = zprojectImageStackWithPreview(imageStack, method, frames, uiImagePreviewHandle)
 
 % If method and frames are specified, simply return the z-projected image.
 % No UI dialogs or images are shown.
