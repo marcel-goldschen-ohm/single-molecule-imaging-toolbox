@@ -1,4 +1,4 @@
-function [filteredImage, sigma] = gaussianFilterImage(originalImage, sigma, uiImagePreviewHandle)
+function [filteredImage, sigma] = gaussianFilterImageWithPreview(originalImage, sigma, uiImagePreviewHandle)
 
 % filteredImage = imgaussfilt(originalImage, sigma);
 %
