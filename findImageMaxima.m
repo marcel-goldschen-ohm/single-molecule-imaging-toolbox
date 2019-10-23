@@ -1,12 +1,12 @@
 function [xy, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFilterSigma] = ...
-    findImageMaxima(im, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFilterSigma, uiImageHandle)
+    findImageMaxima(im, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFilterSigma, uiImagePreviewHandle)
 
 % xy: [x y] coords of local maxima in image im.
 % minPeakProminence: size of local peak to be considered as a maxima
 % minPeakSeparation: min separation between maxima
 % tophatFilterRadius: disk radius of image's tophat pre-filter
 % gaussFilterSigma: sigma of image's gaussian pre-filter
-% uiImageHandle: handle to image graphics object used for live preview
+% uiImagePreviewHandle: handle to image graphics object used for live preview
 %                If NOT specified, a temporary figure will be created for
 %                the preview.
 %
@@ -19,9 +19,9 @@ function [xy, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFil
 % is assumed that all desired pre-filtering has already been applied to im.
 %
 % If minPeakProminence or minPeakSeparation are empty or do not exist,
-% popup a dialog for editing all parameters and update uiImageHandle live
+% popup a dialog for editing all parameters and update uiImagePreviewHandle live
 % to show the filtered image overlaid with the located maxima for the
-% current parameter values. If uiImageHandle does not exist, create a new
+% current parameter values. If uiImagePreviewHandle does not exist, create a new
 % figure for the live update of the pre-filtering and maxima locations.
 %
 % !!! The maxima locations are only returned if the dialog's OK button is
@@ -58,20 +58,20 @@ function [xy, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFil
         end
         
         % image and parent axes on which to show maxima
-        if ~exist('uiImageHandle', 'var')
+        if ~exist('uiImagePreviewHandle', 'var')
             tempFig = figure('Name', 'Find Image Maxima', 'numbertitle', 'off');
             uiImageAxes = axes(tempFig, ...
                 'XTick', [], ...
                 'YTick', [], ...
                 'YDir', 'reverse');
-            uiImageHandle = image(uiImageAxes, [], ...
+            uiImagePreviewHandle = image(uiImageAxes, [], ...
                 'HitTest', 'off', ...
                 'PickableParts', 'none');
             axis(uiImageAxes, 'image');
         else
-            uiImageAxes = uiImageHandle.Parent;
+            uiImageAxes = uiImagePreviewHandle.Parent;
         end
-        uiMaximaHandle = scatter(uiImageAxes, nan, nan, 'r+', ...
+        uiMaximaPreviewHandle = scatter(uiImageAxes, nan, nan, 'r+', ...
             'HitTest', 'off', ...
             'PickableParts', 'none');
         
@@ -112,14 +112,14 @@ function [xy, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFil
             'Callback', @ok_);
         uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
             'Units', 'normalized', 'Position', [w/2+5, y, 50, 30], ...
-            'Callback', 'delete(dlg)');
+            'Callback', 'delete(gcf)');
         
         ok = false; % OK dialog button will set back to true
         showMaxima_();
         uiwait(dlg);
         
         % run this after dialog is closed
-        delete(uiMaximaHandle);
+        delete(uiMaximaPreviewHandle);
         if exist('tempFig', 'var')
             delete(tempFig);
         end
@@ -248,16 +248,16 @@ function [xy, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFil
         if ~isempty(im_)
             I = imadjust(uint16(im_));
             rgb = cat(3,I,I,I);
-            uiImageHandle.CData = rgb;
-            uiImageHandle.XData = [1 size(rgb,2)];
-            uiImageHandle.YData = [1 size(rgb,1)];
+            uiImagePreviewHandle.CData = rgb;
+            uiImagePreviewHandle.XData = [1 size(rgb,2)];
+            uiImagePreviewHandle.YData = [1 size(rgb,1)];
         end
         if ~isempty(xy_)
-            uiMaximaHandle.XData = xy_(:,1);
-            uiMaximaHandle.YData = xy_(:,2);
+            uiMaximaPreviewHandle.XData = xy_(:,1);
+            uiMaximaPreviewHandle.YData = xy_(:,2);
         else
-            uiMaximaHandle.XData = nan;
-            uiMaximaHandle.YData = nan;
+            uiMaximaPreviewHandle.XData = nan;
+            uiMaximaPreviewHandle.YData = nan;
         end
     end
 
