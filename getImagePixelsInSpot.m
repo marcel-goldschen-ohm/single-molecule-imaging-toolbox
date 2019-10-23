@@ -1,4 +1,4 @@
-function [pixelsXY, pixelIndices] = getPixelsInSpot(centerXY, radius, imageSize)
+function [pixelsXY, pixelIndices] = getImagePixelsInSpot(centerXY, radius, imageSize)
 
 % Return all pixels within radius of centerXY.
 
