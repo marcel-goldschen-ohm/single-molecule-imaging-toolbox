@@ -10,19 +10,8 @@ function [xy, minPeakProminence, minPeakSeparation, tophatFilterRadius, gaussFil
 %                If NOT specified, a temporary figure will be created for
 %                the preview.
 %
-% Hint: Might want to smooth image first to reduce maxima due to noise.
-% e.g. im = imgaussfilt(im, ...)
-% Options for pre-filtering are available in the dialog too.
-%
-% If minPeakProminence and minPeakSeparation are specified, simply return
-% the located maxima. No UI dialogs or image previews are shown. In this case, it
-% is assumed that all desired pre-filtering has already been applied to im.
-%
-% If minPeakProminence or minPeakSeparation are empty or do not exist,
-% popup a dialog for editing all parameters and update uiImagePreviewHandle live
-% to show the filtered image overlaid with the located maxima for the
-% current parameter values. If uiImagePreviewHandle does not exist, create a new
-% figure for the live update of the pre-filtering and maxima locations.
+% Pops up a dialog to edit parameters and shows a live preview with maxima
+% locations marked.
 %
 % !!! The maxima locations are only returned if the dialog's OK button is
 % pressed, the cancel button will return an empty list.
