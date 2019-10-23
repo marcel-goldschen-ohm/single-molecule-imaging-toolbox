@@ -3,7 +3,7 @@ function [filteredImage, diskRadius] = tophatFilterImageWithPreview(originalImag
 % filteredImage = imtophat(originalImage, strel('disk', diskRadius));
 %
 % uiImagePreviewHandle: Optional handle to image graphics object for live preview.
-%                       If not specified, a temproraty figure will be created for the preview.
+%                       If not specified, a temporary figure will be created for the preview.
 %
 % Pops up a dialog to edit parameters and shows a live preview of the
 % filtered image.
