@@ -24,53 +24,53 @@ function [filteredImage, sigma] = gaussianFilterImageWithPreview(originalImage, 
         return
     end
     
-    % dialog with parameter settings
-    ok = true;
+    % default parameters
     if ~exist('sigma', 'var') || isempty(sigma)
-        % default parameters
         sigma = 1.5;
-        
-        % preview image filter
-        if ~exist('uiImagePreviewHandle', 'var')
-            tempFig = figure('Name', 'Gaussian Filter', 'numbertitle', 'off');
-            ax = axes(tempFig, ...
-                'XTick', [], ...
-                'YTick', [], ...
-                'YDir', 'reverse');
-            uiImagePreviewHandle = image(ax, [], ...
-                'HitTest', 'off', ...
-                'PickableParts', 'none');
-            axis(ax, 'image');
-        end
-        
-        % dialog
-        dlg = dialog('Name', 'Gaussian Filter');
-        w = 200;
-        lh = 20;
-        h = lh + 30;
-        dlg.Position(3) = w;
-        dlg.Position(4) = h;
-        y = h - lh;
-        uicontrol(dlg, 'Style', 'text', 'String', 'Sigma', ...
-            'Units', 'pixels', 'Position', [0, y, w/2, lh]);
-        uicontrol(dlg, 'Style', 'edit', 'String', num2str(sigma), ...
-            'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
-            'Callback', @setSigma_);
-        y = 0;
-        uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
-            'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
-            'Callback', @ok_);
-        uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
-            'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
-            'Callback', 'delete(gcf)');
-        ok = false; % OK dialog button will set back to true
-        showFilteredImage_();
-        uiwait(dlg);
-        
-        % run this after dialog is closed
-        if exist('tempFig', 'var')
-            delete(tempFig);
-        end
+    end
+    
+    % preview image filter
+    if ~exist('uiImagePreviewHandle', 'var')
+        tempFig = figure('Name', 'Gaussian Filter', 'numbertitle', 'off');
+        ax = axes(tempFig, ...
+            'XTick', [], ...
+            'YTick', [], ...
+            'YDir', 'reverse');
+        uiImagePreviewHandle = image(ax, [], ...
+            'HitTest', 'off', ...
+            'PickableParts', 'none');
+        axis(ax, 'image');
+    end
+    
+    % dialog
+    dlg = dialog('Name', 'Gaussian Filter');
+    w = 200;
+    lh = 20;
+    h = lh + 30;
+    dlg.Position(3) = w;
+    dlg.Position(4) = h;
+    y = h - lh;
+    uicontrol(dlg, 'Style', 'text', 'String', 'Sigma', ...
+        'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+    uicontrol(dlg, 'Style', 'edit', 'String', num2str(sigma), ...
+        'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+        'Callback', @setSigma_);
+    y = 0;
+    uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
+        'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
+        'Callback', @ok_);
+    uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
+        'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
+        'Callback', 'delete(gcf)');
+    
+    % block until dialog is closed
+    ok = false; % OK dialog button will set back to true
+    showFilteredImage_();
+    uiwait(dlg);
+
+    % run this after dialog is closed
+    if exist('tempFig', 'var')
+        delete(tempFig);
     end
 
     % dialog OK callback
