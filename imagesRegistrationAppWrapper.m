@@ -1,4 +1,4 @@
-function movingReg = alignImagesAppWrapper(moving, fixed)
+function movingReg = imagesRegistrationAppWrapper(moving, fixed)
 
 % This is a wrapper for programatically launching MATLAB's
 % registrationEstimator app and returning the last image registration
