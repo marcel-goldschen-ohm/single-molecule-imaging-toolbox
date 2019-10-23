@@ -35,7 +35,7 @@ function [filteredImage, diskRadius] = tophatFilterImageWithPreview(originalImag
         axis(ax, 'image');
     end
     
-    % dialog
+    % parameter dialog
     dlg = dialog('Name', 'Tophat Filter');
     w = 200;
     lh = 20;
