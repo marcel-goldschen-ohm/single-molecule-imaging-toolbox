@@ -30,7 +30,7 @@ classdef ImageRegistration
             registeredSpots = transformPointsForward(obj.transformation, obj.movingSpots);
         end
         
-        function registerImages(moving, fixed)
+        function obj = registerImages(obj, moving, fixed)
             if exist('moving', 'var') && ~isempty(moving)
                 obj.movingImage = moving;
             end
@@ -43,7 +43,7 @@ classdef ImageRegistration
             end
         end
         
-%         function registerSpots(moving, fixed)
+%         function obj = registerSpots(obj, moving, fixed)
 %             if exist('moving', 'var') && ~isempty(moving)
 %                 obj.movingSpots = moving;
 %             end
