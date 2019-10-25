@@ -1,6 +1,11 @@
 classdef ImageRegistration
-    %IMAGEREGISTRATION Summary of this class goes here
-    %   Detailed explanation goes here
+    %IMAGEREGISTRATION Image registration 2D transformation.
+    %   Transformation computed either by image intensity registration or
+    %   via spot registration. Intensity registration utilizes MATLAB's
+    %   builtin registrationEstimator app.
+    %
+    %	Created by Marcel Goldschen-Ohm
+    %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
     
     properties
         movingImage = []; % (2d image) (for channel at column index)
