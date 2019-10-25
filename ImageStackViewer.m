@@ -31,8 +31,8 @@ classdef ImageStackViewer < handle
         infoText
     end
     
-    properties (Access = private)
-    end
+%     properties (Access = private)
+%     end
     
     methods
         function obj = ImageStackViewer(parent)
@@ -62,14 +62,14 @@ classdef ImageStackViewer < handle
             axis(obj.imageAxes, 'image');
             %set(obj.imageAxes, 'ButtonDownFcn', @obj.imageAxesButtonDown);
             
-            % frame slider controls
+            % frame slider
             obj.frameSlider = uicontrol(parent, 'Style', 'slider', ...
                 'Min', 1, 'Max', 1, 'Value', 1, ...
                 'SliderStep', [1 1], ... % [1/nframes 1/nframes]
                 'Units', 'pixels');
             addlistener(obj.frameSlider, 'Value', 'PostSet', @obj.frameSliderMoved);
             
-            % info
+            % info text
             obj.infoText = uicontrol(parent, 'Style', 'text', ...
                 'HorizontalAlignment', 'left');
             
@@ -82,7 +82,7 @@ classdef ImageStackViewer < handle
             % image stack data via ImageStack handle class
             obj.imageStack = ImageStack();
             
-            %obj.resize(); % called in Position and imageStack setters
+            %obj.resize(); % called in Parent, Position and imageStack setters
         end
         
         function set.Parent(obj, Parent)
@@ -116,7 +116,7 @@ classdef ImageStackViewer < handle
             end
             obj.showFrame(1);
             obj.zoomOutFullImage();
-            obj.resize(); % position slider and info text relative to image
+            obj.resize(); % reposition slider and info text relative to image
         end
         
         function resize(obj, src, event)
