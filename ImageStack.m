@@ -9,34 +9,28 @@ classdef ImageStack < handle
     
     properties
         % string label
-        label
+        label = "";
         
         % [rows x cols x channels x frames]
-        data
+        data = [];
         
         % 'path/to/file'
         % !!! only stored in case data needs to be reloaded from file
-        filepath
+        filepath = '';
         
         % select frames loaded from filepath. [] => all frames
         % !!! only stored in case data needs to be reloaded from file
-        frames
+        frames = [];
         
         % [x y w h] sub-image bounding box (normalized or pixels) loaded
         % from filepath. [] => entire image
         % !!! only stored in case data needs to be reloaded from file
-        viewport
+        viewport = [];
     end
     
     methods
         function obj = ImageStack()
             %IMAGESTACK Construct an instance of this class
-            %   Detailed explanation goes here
-            obj.label = "";
-            obj.data = [];
-            obj.filepath = '';
-            obj.frames = [];
-            obj.viewport = [];
         end
         
         function width = width(obj)
