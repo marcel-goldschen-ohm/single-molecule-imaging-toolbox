@@ -11,15 +11,8 @@ classdef ImageStack < handle
         % string label
         label
         
-        % [rows x cols x frames] (grayscale)
-        % [rows x cols x channels x frames] (color)
+        % [rows x cols x channels x frames]
         data
-        
-        % 'I' => grayscale intensity, 'RGB' => RGB color
-        % # channels = numel(channels)
-        % !!! Only grayscale and RGB images are supported by most other
-        %     functions that use this class.
-        channels
         
         % 'path/to/file'
         % !!! only stored in case data needs to be reloaded from file
@@ -41,35 +34,30 @@ classdef ImageStack < handle
             %   Detailed explanation goes here
             obj.label = "";
             obj.data = [];
-            obj.channels = '';
             obj.filepath = '';
             obj.frames = [];
             obj.viewport = [];
         end
         
+        function width = width(obj)
+            width = size(obj.data,2);
+        end
+        
+        function height = height(obj)
+            height = size(obj.data,1);
+        end
+        
         function nchannels = numChannels(obj)
-            nchannels =  numel(obj.channels);
+            nchannels = size(obj.data,3);
         end
         
         function nframes = numFrames(obj)
-            nframes = 0;
-            nchannels = obj.numChannels();
-            if nchannels == 1
-                nframes = size(obj.data,3);
-            elseif nchannels > 1
-                nframes = size(obj.data,4);
-            end
+            nframes = size(obj.data,4);
         end
         
         function frame = getFrame(obj, t)
-            frame = [];
             try
-                nchannels = obj.numChannels();
-                if nchannels == 1
-                    frame = obj.data(:,:,t);
-                elseif nchannels > 1
-                    frame = obj.data(:,:,:,t);
-                end
+                frame = obj.data(:,:,:,t);
             catch
                 frame = [];
             end
@@ -84,12 +72,15 @@ classdef ImageStack < handle
             % get path/to/file
             if ~exist('filepath', 'var') || isempty(filepath)
                 filepath = '';
+                defaultFilepath = obj.filepath;
+            else
+                defaultFilepath = filepath;
             end
             if isempty(filepath) || contains(filepath, '*')
                 if ~exist('prompt', 'var') || isempty(prompt)
                     prompt = 'Load image stack...';
                 end
-                [file, path] = uigetfile('*.tif', prompt, filepath);
+                [file, path] = uigetfile('*.tif', prompt, defaultFilepath);
                 if isequal(file, 0)
                     return
                 end
@@ -215,18 +206,9 @@ classdef ImageStack < handle
             frame = imread(filepath, frames(1), 'Info', info);
             fmt = class(frame);
             nchannels = size(frame,3);
-            if nchannels == 1 % monochrome
-                fprintf('- Allocating memory for %dx%dx%d %s...\n', nrows, ncols, numel(frames), fmt);
-                obj.data = zeros([nrows, ncols, numel(frames)], fmt);
-                obj.data(:,:,1) = frame(rows,cols);
-            elseif nchannels > 1 % color
-                fprintf('- Allocating memory for %dx%dx%dx%d %s...\n', nrows, ncols, nchannels, numel(frames), fmt);
-                obj.data = zeros([nrows, ncols, ncolors, numel(frames)], fmt);
-                obj.data(:,:,:,1) = frame(rows,cols,:);
-            else
-                errordlg(['ERROR: Unsupported image format: ' fmt]);
-                return
-            end
+            fprintf('- Allocating memory for %dx%dx%dx%d %s...\n', nrows, ncols, nchannels, numel(frames), fmt);
+            obj.data = zeros([nrows ncols nchannels numel(frames)], fmt);
+            obj.data(:,:,:,1) = frame(rows,cols,:);
             
             % load image stack one frame at a time
             disp('- Loading image frames...');
@@ -235,11 +217,7 @@ classdef ImageStack < handle
             framesPerWaitbarUpdate = floor(double(numel(frames)) / 20);
             for t = 2:numel(frames)
                 frame = imread(filepath, frames(t), 'Info', info);
-                if nchannels == 1 % monochrome
-                    obj.data(:,:,t) = frame(rows,cols);
-                elseif nchannels > 1 % color
-                    obj.data(:,:,:,t) = frame(rows,cols,:);
-                end
+                obj.data(:,:,:,t) = frame(rows,cols,:);
                 % updating waitbar is expensive, so do it sparingly
                 if mod(t, framesPerWaitbarUpdate) == 0
                     waitbar(double(t) / numel(frames), wb);
@@ -248,18 +226,6 @@ classdef ImageStack < handle
             close(wb);
             
             % set properties
-            if nchannels == 1
-                obj.channels = 'I';
-            else
-                try
-                    obj.channels = color(1:nchannels);
-                catch
-                    % not sure if the above will always work, so the fall
-                    % back is to have the correct number of I's for the
-                    % number of colors.
-                    obj.channels = repmat('I', 1, nchannels);
-                end
-            end
             obj.filepath = filepath;
             if isequal(frames, 1:nframes)
                 obj.frames = [];
