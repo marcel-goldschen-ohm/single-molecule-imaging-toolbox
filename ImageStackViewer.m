@@ -1,6 +1,7 @@
 classdef ImageStackViewer < handle
     %IMAGESTACKVIEWER Image viewer with frame slider similar to ImageJ.
-    %   Auto-resizes to parent container.
+    %   Auto-resizes to Parent container. Optionally specify Position
+    %   bounding box within Parent container.
     %
     %	Created by Marcel Goldschen-Ohm
     %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
