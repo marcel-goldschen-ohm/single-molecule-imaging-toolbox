@@ -6,13 +6,32 @@ classdef ImageStackViewer < handle
     %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
     
     properties
+        % Parent graphics object.
         Parent
+        
+        % Bounding box in which to arrange items within Parent.
+        % [] => fill Parent container.
         Position
+        
+        % ImageStack handle ref to image stack data.
         imageStack
+        
+        % Image axes.
         imageAxes
+        
+        % Image graphics object for displaying a frame of the image stsack
+        % in imageAxes.
         imageFrame
+        
+        % Slider for changing the displayed image frame.
         frameSlider
+        
+        % Text for displaying info about the image stack or cursor
+        % locaiton, etc.
         infoText
+    end
+    
+    properties (Access = private)
     end
     
     methods
@@ -25,13 +44,9 @@ classdef ImageStackViewer < handle
             % is resized
             if ~exist('parent', 'var') || ~isgraphics(parent)
                 parent = figure();
+                addToolbarExplorationButtons(parent); % old style
             end
-            obj.Parent = parent;
-            obj.Position = []; % defaults to fill parent container
             addlistener(ancestor(parent, 'Figure'), 'SizeChanged', @obj.resize);
-            
-            % image stack data via ImageStack handle class
-            obj.imageStack = ImageStack();
             
             % image axes and image
             obj.imageAxes = axes(parent, ...
@@ -45,19 +60,63 @@ classdef ImageStackViewer < handle
                 'HitTest', 'off', ...
                 'PickableParts', 'none');
             axis(obj.imageAxes, 'image');
+            %set(obj.imageAxes, 'ButtonDownFcn', @obj.imageAxesButtonDown);
             
             % frame slider controls
             obj.frameSlider = uicontrol(parent, 'Style', 'slider', ...
                 'Min', 1, 'Max', 1, 'Value', 1, ...
-                'SliderStep', [1, 1], ... % [1/nframes, 1/nframes]
+                'SliderStep', [1 1], ... % [1/nframes 1/nframes]
                 'Units', 'pixels');
             addlistener(obj.frameSlider, 'Value', 'PostSet', @obj.frameSliderMoved);
             
             % info
-            obj.infoText = uicontrol(parent, 'Style', 'text');
+            obj.infoText = uicontrol(parent, 'Style', 'text', ...
+                'HorizontalAlignment', 'left');
+            
+            % sets Parent for all graphics objects
+            obj.Parent = parent;
             
             % position objects in parent
+            obj.Position = [];
+            
+            % image stack data via ImageStack handle class
+            obj.imageStack = ImageStack();
+            
+            %obj.resize(); % called in Position and imageStack setters
+        end
+        
+        function set.Parent(obj, Parent)
+            % reparent and reposition all graphics objects
+            obj.Parent = Parent;
+            obj.imageAxes.Parent = Parent;
+            obj.frameSlider.Parent = Parent;
+            obj.infoText.Parent = Parent;
             obj.resize();
+        end
+        
+        function set.Position(obj, Position)
+            % set position within Parent container and call resize() to
+            % reposition items within updated Position
+            obj.Position = Position;
+            obj.resize();
+        end
+        
+        function set.imageStack(obj, imageStack)
+            % set handle to image stack data and update displayed image
+            obj.imageStack = imageStack;
+            nframes = obj.imageStack.numFrames();
+            if nframes > 1
+                obj.frameSlider.Visible = 'on';
+                obj.frameSlider.Min = 1;
+                obj.frameSlider.Max = nframes;
+                obj.frameSlider.Value = max(1, min(obj.frameSlider.Value, nframes));
+                obj.frameSlider.SliderStep = [1./nframes 1./nframes];
+            else
+                obj.frameSlider.Visible = 'off';
+            end
+            obj.showFrame(1);
+            obj.zoomOutFullImage();
+            obj.resize(); % position slider and info text relative to image
         end
         
         function resize(obj, src, event)
@@ -90,9 +149,61 @@ classdef ImageStackViewer < handle
         function frameSliderMoved(obj, src, event)
             %FRAMESLIDERMOVED Handle frame slider move event.
             %   Update displayed image frame and frame info text.
+            t = uint32(round(obj.frameSlider.Value));
+            t = max(obj.frameSlider.Min, min(t, obj.frameSlider.Max));
+            obj.showFrame(t);
         end
+        
+        function showFrame(obj, t)
+            frame = obj.imageStack.getFrame(t);
+            if isempty(frame)
+                obj.imageFrame.CData = [];
+            elseif size(frame,3) == 1 % monochrome
+                I = imadjust(frame);
+                obj.imageFrame.CData = cat(3,I,I,I);
+            elseif size(frame,3) == 3 % assume RGB
+                obj.imageFrame.CData = imadjust(frame);
+            else
+                errordlg('Currently only handles grayscale or RGB images.', 'Image Format Error');
+            end
+            if isempty(obj.imageFrame.CData)
+                obj.imageFrame.XData = [];
+                obj.imageFrame.YData = [];
+                obj.infoText.String = '';
+            else
+                w = size(obj.imageFrame.CData,2);
+                h = size(obj.imageFrame.CData,1);
+                obj.imageFrame.XData = [1 w];
+                obj.imageFrame.YData = [1 h];
+                nframes = obj.imageStack.numFrames();
+                if nframes > 1
+                    obj.infoText.String = sprintf('%d/%d (%dx%d)', t, nframes, w, h);
+                else
+                    obj.infoText.String = sprintf('(%dx%d)', w, h);
+                end
+            end
+        end
+        
+        function zoomOutFullImage(obj)
+            if ~isempty(obj.imageFrame.CData)
+                obj.imageFrame.XData = [1 size(obj.imageFrame.CData,2)];
+                obj.imageFrame.YData = [1 size(obj.imageFrame.CData,1)];
+                obj.imageAxes.XLim = [0.5, obj.imageFrame.XData(end)+0.5];
+                obj.imageAxes.YLim = [0.5, obj.imageFrame.YData(end)+0.5];
+            end
+        end
+        
+%         function imageAxesButtonDown(obj, src, event)
+%             x = event.IntersectionPoint(1);
+%             y = event.IntersectionPoint(2);
+%             if event.Button == 1 % left
+%             elseif event.Button == 2 % middle
+%             elseif event.Button == 3 % right
+%             end
+%         end
     end
-    methods(Static)
+    
+    methods (Static)
         % https://github.com/kakearney/plotboxpos-pkg
         % copied here for convenience, otherwise install via Add-On Explorer
         function pos = plotboxpos(h)
