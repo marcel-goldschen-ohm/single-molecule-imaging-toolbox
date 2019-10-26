@@ -232,6 +232,17 @@ classdef ImageStack < handle
             toc
             disp('... Done.');
         end
+        
+        function reload(obj)
+            if isempty(obj.filepath)
+                return
+            end
+            if isfile(obj.filepath)
+                obj.load(obj.filepath, '', obj.frames, obj.viewport, false);
+            else
+                errordlg(['Invalid filepath: ' obj.filepath], 'Image Stack File Not Found');
+            end
+        end
     end
 end
 
