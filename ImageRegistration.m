@@ -1,4 +1,4 @@
-classdef ImageRegistration
+classdef ImageRegistration < handle
     %IMAGEREGISTRATION Image registration 2D transformation.
     %   Transformation computed either by image intensity registration or
     %   via spot registration. Intensity registration utilizes MATLAB's
@@ -30,7 +30,7 @@ classdef ImageRegistration
             registeredSpots = transformPointsForward(obj.transformation, obj.movingSpots);
         end
         
-        function obj = registerImages(obj, moving, fixed)
+        function registerImages(obj, moving, fixed)
             if exist('moving', 'var') && ~isempty(moving)
                 obj.movingImage = moving;
             end
@@ -43,7 +43,7 @@ classdef ImageRegistration
             end
         end
         
-%         function obj = registerSpots(obj, moving, fixed)
+%         function registerSpots(obj, moving, fixed)
 %             if exist('moving', 'var') && ~isempty(moving)
 %                 obj.movingSpots = moving;
 %             end
