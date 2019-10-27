@@ -103,6 +103,27 @@ classdef ImageRegistration < handle
                 movingReg = evalin('base', newvars{end});
             end
         end
+        
+        function obj = loadobj(s)
+            if isstruct(s)
+                obj = ImageRegistration();
+                for prop = fieldnames(obj)
+                    if isfield(s, prop)
+                        try
+                            obj.(prop) = s.(prop);
+                        catch
+                            disp(['!!! ERROR: ' class(obj) ': Failed to load property ' prop]);
+                        end
+                    end
+                end
+                unloadedProps = setdiff(fieldnames(s), fieldnames(obj));
+                if ~isempty(unloadedProps)
+                    disp(['!!! WARNING: ' class(obj) ': Did NOT load invalid properties: ' strjoin(unloadedProps, ',')]);
+                end
+            else
+                obj = s;
+            end
+        end
     end
 end
 
