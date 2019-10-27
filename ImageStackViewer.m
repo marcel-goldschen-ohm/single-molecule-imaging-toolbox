@@ -7,15 +7,12 @@ classdef ImageStackViewer < handle
     %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
     
     properties
-        % Parent graphics object.
-        Parent
+        % ImageStack handle ref to image stack data.
+        imageStack = ImageStack();
         
         % Bounding box in which to arrange items within Parent.
         % [] => fill Parent container.
-        Position
-        
-        % ImageStack handle ref to image stack data.
-        imageStack
+        Position = [];
         
         % Image axes.
         imageAxes
@@ -32,8 +29,17 @@ classdef ImageStackViewer < handle
         infoText
     end
     
-%     properties (Access = private)
-%     end
+    properties (Access = private)
+        resizeListener = [];
+    end
+    
+    properties (Dependent)
+        % Parent graphics object.
+        Parent
+        
+        % Visibility of all graphics objects.
+        Visible
+    end
     
     methods
         function obj = ImageStackViewer(parent)
@@ -47,7 +53,6 @@ classdef ImageStackViewer < handle
                 parent = figure();
                 addToolbarExplorationButtons(parent); % old style
             end
-            addlistener(ancestor(parent, 'Figure'), 'SizeChanged', @obj.resize);
             
             % image axes and image
             obj.imageAxes = axes(parent, ...
@@ -74,31 +79,38 @@ classdef ImageStackViewer < handle
             obj.infoText = uicontrol(parent, 'Style', 'text', ...
                 'HorizontalAlignment', 'left');
             
-            % sets Parent for all graphics objects
-            obj.Parent = parent;
-            
-            % position objects in parent
-            obj.Position = [];
-            
-            % image stack data via ImageStack handle class
-            obj.imageStack = ImageStack();
-            
-            %obj.resize(); % called in Parent, Position and imageStack setters
-        end
-        
-        function set.Parent(obj, Parent)
-            % reparent and reposition all graphics objects
-            obj.Parent = Parent;
-            obj.imageAxes.Parent = Parent;
-            obj.frameSlider.Parent = Parent;
-            obj.infoText.Parent = Parent;
             obj.resize();
+            obj.updateResizeListener();
         end
         
-        function set.Position(obj, Position)
+        function parent = get.Parent(obj)
+            parent = obj.imageAxes.Parent;
+        end
+        
+        function set.Parent(obj, parent)
+            % reparent and reposition all graphics objects
+            obj.imageAxes.Parent = parent;
+            obj.frameSlider.Parent = parent;
+            obj.infoText.Parent = parent;
+            obj.resize();
+            obj.updateResizeListener();
+        end
+        
+        function visible = get.Visible(obj)
+            visible = obj.imageAxes.Visible;
+        end
+        
+        function set.Visible(obj, visible)
+            % reparent and reposition all graphics objects
+            obj.imageAxes.Visible = visible;
+            obj.frameSlider.Visible = visible;
+            obj.infoText.Visible = visible;
+        end
+        
+        function set.Position(obj, position)
             % set position within Parent container and call resize() to
             % reposition items within updated Position
-            obj.Position = Position;
+            obj.Position = position;
             obj.resize();
         end
         
@@ -132,6 +144,18 @@ classdef ImageStackViewer < handle
                 y = obj.Position(2);
                 w = obj.Position(3);
                 h = obj.Position(4);
+                if w <= 1 && x <= 1
+                    % normalized in horizontal
+                    pw = obj.Parent.Position(3);
+                    x = max(margin, min(x * pw, pw - 2 * margin));
+                    w = max(margin, min(w * pw, pw - x - margin));
+                end
+                if h <= 1 && y <= 1
+                    % normalized in vertical
+                    ph = obj.Parent.Position(4);
+                    y = max(margin, min(y * ph, ph - 2 * margin));
+                    h = max(margin, min(h * ph, ph - y - margin));
+                end
             catch
                 % fill Parent container
                 x = margin;
@@ -145,6 +169,13 @@ classdef ImageStackViewer < handle
             pos = ImageStackViewer.plotboxpos(obj.imageAxes);
             obj.frameSlider.Position = [pos(1) pos(2)-margin-15 pos(3) 15];
             obj.infoText.Position = [pos(1) pos(2)+pos(4)+margin pos(3) 15];
+        end
+        
+        function updateResizeListener(obj)
+            if ~isemtpy(obj.resizeListener) && isvalid(obj.resizeListener)
+                delete(obj.resizeListener);
+            end
+            obj.resizeListener = addlistener(ancestor(obj.Parent, 'Figure'), 'SizeChanged', @obj.resize);
         end
         
         function frameSliderMoved(obj, src, event)
