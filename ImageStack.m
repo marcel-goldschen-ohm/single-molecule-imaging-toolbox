@@ -57,6 +57,26 @@ classdef ImageStack < handle
             end
         end
         
+        function label = getLabelWithSizeInfo(obj)
+            if isempty(obj.data)
+                label = obj.label;
+                return
+            end
+            w = obj.width();
+            h = obj.height();
+            c = obj.numChannels();
+            t = obj.numFrames();
+            if c == 1 && t == 1
+                label = sprintf('%s (%dx%d)', obj.label, w, h);
+            elseif c == 1
+                label = sprintf('%s (%dx%d)x%d', obj.label, w, h, t);
+            elseif t == 1
+                label = sprintf('%s (%dx%dx%d)', obj.label, w, h, c);
+            else
+                label = sprintf('%s (%dx%dx%d)x%d', obj.label, w, h, c, t);
+            end
+        end
+        
         function load(obj, filepath, prompt, frames, viewport, showOptionsDialog)
             %LOAD Load image stack from file.
             %   Should handle both grayscale and color images.
