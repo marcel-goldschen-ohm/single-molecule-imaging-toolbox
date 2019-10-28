@@ -69,7 +69,7 @@ classdef ImageStackViewer < handle
                 'HitTest', 'off', ...
                 'PickableParts', 'none');
             axis(obj.imageAxes, 'image');
-            %set(obj.imageAxes, 'ButtonDownFcn', @obj.imageAxesButtonDown);
+            set(obj.imageAxes, 'ButtonDownFcn', @obj.imageAxesButtonDown);
             
             % frame slider
             obj.frameSlider = uicontrol(parent, 'Style', 'slider', ...
@@ -248,14 +248,26 @@ classdef ImageStackViewer < handle
             end
         end
         
-%         function imageAxesButtonDown(obj, src, event)
-%             x = event.IntersectionPoint(1);
-%             y = event.IntersectionPoint(2);
-%             if event.Button == 1 % left
-%             elseif event.Button == 2 % middle
-%             elseif event.Button == 3 % right
-%             end
-%         end
+        function imageAxesButtonDown(obj, src, event)
+            x = event.IntersectionPoint(1);
+            y = event.IntersectionPoint(2);
+            if event.Button == 1 % left
+                obj.leftClickInImage(x, y);
+            elseif event.Button == 2 % middle
+                obj.middleClickInImage(x, y);
+            elseif event.Button == 3 % right
+                obj.rightClickInImage(x, y);
+            end
+        end
+        
+        function leftClickInImage(obj, x, y)
+        end
+        
+        function middleClickInImage(obj, x, y)
+        end
+        
+        function rightClickInImage(obj, x, y)
+        end
     end
     
     methods (Static)
