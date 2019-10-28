@@ -27,6 +27,9 @@ classdef ImageStackViewer < handle
         % Text for displaying info about the image stack or cursor
         % locaiton, etc.
         infoText
+        
+        % Optional toolbar panel.
+        toolbarPanel = gobjects(0);
     end
     
     properties (Access = private)
@@ -37,7 +40,7 @@ classdef ImageStackViewer < handle
         % Parent graphics object.
         Parent
         
-        % Visibility of all graphics objects.
+        % Visibility of all graphics objects besides toolbarPanel
         Visible
     end
     
@@ -83,6 +86,10 @@ classdef ImageStackViewer < handle
             obj.updateResizeListener();
         end
         
+        function tf = hasToolbar(obj)
+            tf = ~isempty(obj.toolbarPanel) && isgraphics(obj.toolbarPanel);
+        end
+        
         function parent = get.Parent(obj)
             parent = obj.imageAxes.Parent;
         end
@@ -92,6 +99,9 @@ classdef ImageStackViewer < handle
             obj.imageAxes.Parent = parent;
             obj.frameSlider.Parent = parent;
             obj.infoText.Parent = parent;
+            if obj.hasToolbar()
+                obj.toolbarPanel.Parent = parent;
+            end
             obj.resize();
             obj.updateResizeListener();
         end
@@ -105,6 +115,9 @@ classdef ImageStackViewer < handle
             obj.imageAxes.Visible = visible;
             obj.frameSlider.Visible = visible;
             obj.infoText.Visible = visible;
+            if obj.hasToolbar()
+                obj.toolbarPanel.Visible = visible;
+            end
         end
         
         function set.Position(obj, position)
@@ -165,14 +178,21 @@ classdef ImageStackViewer < handle
             end
             obj.Parent.Units = parentUnits;
             
-            obj.imageAxes.Position = [x y+15+margin w max(1,h-30-2*margin)];
+            if obj.hasToolbar()
+                obj.imageAxes.Position = [x y+15+margin w max(1,h-45-2*margin)];
+            else
+                obj.imageAxes.Position = [x y+15+margin w max(1,h-30-2*margin)];
+            end
             pos = ImageStackViewer.plotboxpos(obj.imageAxes);
             obj.frameSlider.Position = [pos(1) pos(2)-margin-15 pos(3) 15];
             obj.infoText.Position = [pos(1) pos(2)+pos(4)+margin pos(3) 15];
+            if obj.hasToolbar()
+                obj.toolbarPanel.Position = [pos(1) pos(2)+pos(4)+margin+15 pos(3) 15];
+            end
         end
         
         function updateResizeListener(obj)
-            if ~isemtpy(obj.resizeListener) && isvalid(obj.resizeListener)
+            if ~isempty(obj.resizeListener) && isvalid(obj.resizeListener)
                 delete(obj.resizeListener);
             end
             obj.resizeListener = addlistener(ancestor(obj.Parent, 'Figure'), 'SizeChanged', @obj.resize);
@@ -212,6 +232,9 @@ classdef ImageStackViewer < handle
                     obj.infoText.String = sprintf('%d/%d (%dx%d)', t, nframes, w, h);
                 else
                     obj.infoText.String = sprintf('(%dx%d)', w, h);
+                end
+                if ~isempty(obj.imageStack.label)
+                    obj.infoText.String = [obj.infoText.String ' ' char(obj.imageStack.label)];
                 end
             end
         end
