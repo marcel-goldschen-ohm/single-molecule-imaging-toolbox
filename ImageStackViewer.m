@@ -207,6 +207,9 @@ classdef ImageStackViewer < handle
         end
         
         function showFrame(obj, t)
+            if ~exist('t', 'var')
+                t = max(1, min(obj.frameSlider.Value, obj.imageStack.numFrames()));
+            end
             frame = obj.imageStack.getFrame(t);
             if isempty(frame)
                 obj.imageFrame.CData = [];
@@ -221,14 +224,25 @@ classdef ImageStackViewer < handle
             if isempty(obj.imageFrame.CData)
                 obj.imageFrame.XData = [];
                 obj.imageFrame.YData = [];
-                obj.infoText.String = '';
             else
                 w = size(obj.imageFrame.CData,2);
                 h = size(obj.imageFrame.CData,1);
                 obj.imageFrame.XData = [1 w];
                 obj.imageFrame.YData = [1 h];
+                obj.frameSlider.Value = t;
+            end
+            obj.updateInfoText();
+        end
+        
+        function updateInfoText(obj)
+            if isempty(obj.imageFrame.CData)
+                obj.infoText.String = '';
+            else
+                w = size(obj.imageFrame.CData,2);
+                h = size(obj.imageFrame.CData,1);
                 nframes = obj.imageStack.numFrames();
                 if nframes > 1
+                    t = obj.frameSlider.Value;
                     obj.infoText.String = sprintf('%d/%d (%dx%d)', t, nframes, w, h);
                 else
                     obj.infoText.String = sprintf('(%dx%d)', w, h);
