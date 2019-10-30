@@ -11,10 +11,10 @@ classdef ImageStack < handle
         % string label
         label = "";
         
-        % [rows x cols x channels x frames]
+        % [rows x cols x channels x frames] image pixel data
         data = [];
         
-        % 'path/to/file'
+        % 'path/to/image/file'
         % !!! only stored in case data needs to be reloaded from file
         filepath = '';
         
@@ -34,22 +34,27 @@ classdef ImageStack < handle
         end
         
         function width = width(obj)
+            %WIDTH Return image column width
             width = size(obj.data,2);
         end
         
         function height = height(obj)
+            %HEIGHT Return image row height
             height = size(obj.data,1);
         end
         
         function nchannels = numChannels(obj)
+            %NUMCHANNELS Return number of channels in image
             nchannels = size(obj.data,3);
         end
         
         function nframes = numFrames(obj)
+            %NUMFRAMES Return number of frames in image stack
             nframes = size(obj.data,4);
         end
         
         function frame = getFrame(obj, t)
+            %FRAME Return the pixel data for a single image frame
             try
                 frame = obj.data(:,:,:,t);
             catch
@@ -58,6 +63,8 @@ classdef ImageStack < handle
         end
         
         function label = getLabelWithSizeInfo(obj)
+            %GETLABELWITHSIZEINFO Return the image label with size info
+            %appended
             if isempty(obj.data)
                 label = obj.label;
                 return
@@ -78,7 +85,7 @@ classdef ImageStack < handle
         end
         
         function load(obj, filepath, prompt, frames, viewport, showOptionsDialog)
-            %LOAD Load image stack from file.
+            %LOAD Load image stack from file
             %   Should handle both grayscale and color images.
             %   !!! Only tested for grayscale TIFF images.
             %	showOptionsDialog: true => show frames and viewport dialog
@@ -254,6 +261,9 @@ classdef ImageStack < handle
         end
         
         function reload(obj)
+            %RELOAD Reload image data from obj.filepath
+            %   Only load subimage slices as defined by obj.frames and
+            %   obj.viewport
             if isempty(obj.filepath)
                 return
             end
@@ -262,6 +272,69 @@ classdef ImageStack < handle
             else
                 errordlg(['Invalid filepath: ' obj.filepath], 'Image Stack File Not Found');
             end
+        end
+        
+        function im = duplicate(obj, frames)
+            %DUPLICATE Return a copy of the specified frames
+            if isempty(obj.data)
+                errordlg('Requires an image.', 'Duplicate');
+                return
+            end
+            nframes = obj.numFrames();
+            if nframes == 1
+                frames = 1;
+            else
+                if ~exist('frames', 'var') || isempty(frames)
+                    frames = 1:nframes;
+                    dlg = dialog('Name', 'Duplicate');
+                    dlg.Position(3) = 200;
+                    dlg.Position(4) = 50;
+                    uicontrol(dlg, 'Style', 'text', 'String', 'Frames', ...
+                        'Units', 'normalized', 'Position', [0, 0.6, 0.5, 0.4]);
+                    uicontrol(dlg, 'Style', 'edit', 'String', [ num2str(frames(1)) '-' num2str(frames(end))], ...
+                        'Units', 'normalized', 'Position', [0.5, 0.6, 0.5, 0.4], ...
+                        'Callback', @setFrames_);
+                    uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
+                        'Units', 'normalized', 'Position', [0.1, 0, 0.4, 0.6], ...
+                        'Callback', @ok_);
+                    uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
+                        'Units', 'normalized', 'Position', [0.5, 0, 0.4, 0.6], ...
+                        'Callback', 'delete(gcf)');
+                    ok = false; % OK button will set to true
+                    uiwait(dlg);
+                    if ~ok
+                        return
+                    end
+                end
+            end
+            function setFrames_(edit, varargin)
+                firstlast = split(edit.String, '-');
+                first = str2num(firstlast{1});
+                if numel(firstlast) == 2
+                    last = str2num(firstlast{2});
+                    frames = max(1, first):min(last, nframes);
+                else
+                    frames = first;
+                end
+            end
+            function ok_(varargin)
+                ok = true;
+                delete(dlg);
+            end
+            try
+                im = ImageStack;
+                im.data = obj.data(:,:,:,frames);
+                if numel(frames) > 1
+                    im.label = string(sprintf('%s %d-%d', obj.label, frames(1), frames(end)));
+                else
+                    im.label = string(sprintf('%s %d', obj.label, frames));
+                end
+            catch
+            end
+        end
+        
+        function im = zproject(obj, method, frames, previewImage)
+            ... % TODO
         end
     end
     
@@ -285,6 +358,51 @@ classdef ImageStack < handle
             else
                 obj = s;
             end
+        end
+        
+        function zim = zprojectPreview(im, method, frames, previewImage)
+            zim = [];
+            nframes = im.numFrames();
+            if nframes <= 1
+                errordlg('Requires an image stack.', 'Z-Project');
+                return
+            end
+            methods = {'Mean', 'Min', 'Max'};
+            % default parameters
+            if ~exist('method', 'var') || isempty(method)
+                method = 'Mean';
+            end
+            if ~exist('frames', 'var') || isempty(frames)
+                frames = 1:nframes;
+            end
+            ... % TODO
+        end
+    
+        function fim = gaussianFilterPreview(im, sigma, previewImage)
+            fim = [];
+            if isempty(im)
+                errordlg('Requires an image.', 'Gaussian Filter');
+                return
+            end
+            % default parameters
+            if ~exist('sigma', 'var') || isempty(sigma)
+                sigma = 1.5;
+            end
+            
+            
+            ... % TODO
+        end
+    
+        function fim = tophatFilter(im, diskRadius)
+            ... % TODO
+        end
+    
+        function mask = threshold(im, threshold)
+            ... % TODO
+        end
+    
+        function xy = findMaxima(im, minPeakProminence, minPeakSeparation, fastButApproxMergeOfNearbyMaxima)
+            ... % TODO
         end
     end
 end
