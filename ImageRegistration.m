@@ -22,12 +22,18 @@ classdef ImageRegistration < handle
             %IMAGEREGISTRATION Construct an instance of this class
         end
         
-        function registeredImage = getRegisteredImage(obj)
-            registeredImage = imwarp(obj.movingImage, obj.transformation, 'OutputView', imref2d(size(obj.fixedImage)));
+        function registeredImage = getRegisteredImage(obj, movingImage)
+            if ~exist('movingImage', 'var') || isempty(movingImage)
+                movingImage = obj.movingImage;
+            end
+            registeredImage = imwarp(movingImage, obj.transformation, 'OutputView', imref2d(size(obj.fixedImage)));
         end
         
-        function registeredSpots = getRegisteredSpots(obj)
-            registeredSpots = transformPointsForward(obj.transformation, obj.movingSpots);
+        function registeredSpots = getRegisteredSpots(obj, movingSpots)
+            if ~exist('movingSpots', 'var') || isempty(movingSpots)
+                movingSpots = obj.movingSpots;
+            end
+            registeredSpots = transformPointsForward(obj.transformation, movingSpots);
         end
         
         function registerImages(obj, moving, fixed)
