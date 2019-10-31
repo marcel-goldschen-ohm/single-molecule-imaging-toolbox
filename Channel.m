@@ -38,7 +38,11 @@ classdef Channel < handle
                 for prop = fieldnames(obj)
                     if isfield(s, prop)
                         try
-                            obj.(prop) = s.(prop);
+                            if isstruct(obj.(prop))
+                                obj.(prop) = Channel.makeStructArraysCompatible(s.(prop), obj.(prop));
+                            else
+                                obj.(prop) = s.(prop);
+                            end
                         catch
                             disp(['!!! ERROR: ' class(obj) ': Failed to load property ' prop]);
                         end
@@ -50,6 +54,31 @@ classdef Channel < handle
                 end
             else
                 obj = s;
+            end
+        end
+        
+        function [A, B] = makeStructArraysCompatible(A, B)
+            % Adds default empty fields to struct arrays A and B as needed so that they
+            % have identical fieldnames.
+            fa = fieldnames(A);
+            fb = fieldnames(B);
+            fab = union(fa, fb);
+            for k = 1:numel(fab)
+                if ~isfield(A, fab{k})
+                    bk = B(1).(fab{k});
+                    if isobject(bk)
+                        [A.(fab{k})] = deal(eval(class(bk)));
+                    else
+                        [A.(fab{k})] = deal([]);
+                    end
+                elseif ~isfield(B, fab{k})
+                    ak = A(1).(fab{k});
+                    if isobject(ak)
+                        [B.(fab{k})] = deal(eval(class(ak)));
+                    else
+                        [B.(fab{k})] = deal([]);
+                    end
+                end
             end
         end
     end
