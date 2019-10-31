@@ -53,7 +53,7 @@ classdef ImageStack < handle
             nframes = size(obj.data,4);
         end
         
-        function frame = frame(obj, t)
+        function frame = getFrame(obj, t)
             %FRAME Return the pixel data for a single image frame
             frame = obj.data(:,:,:,t);
         end
@@ -269,9 +269,9 @@ classdef ImageStack < handle
             end
         end
         
-        function imstack = duplicate(obj, frames)
+        function newobj = duplicate(obj, frames)
             %DUPLICATE Return a copy of the specified frames
-            imstack = ImageStack;
+            newobj = ImageStack;
             if isempty(obj.data)
                 errordlg('Requires an image.', 'Duplicate');
                 return
@@ -319,18 +319,18 @@ classdef ImageStack < handle
             end
             % duplicate
             try
-                imstack.data = obj.data(:,:,:,frames);
+                newobj.data = obj.data(:,:,:,frames);
                 if numel(frames) > 1
-                    imstack.label = string(sprintf('%s %d-%d', obj.label, frames(1), frames(end)));
+                    newobj.label = string(sprintf('%s %d-%d', obj.label, frames(1), frames(end)));
                 else
-                    imstack.label = string(sprintf('%s %d', obj.label, frames));
+                    newobj.label = string(sprintf('%s %d', obj.label, frames));
                 end
             catch
             end
         end
         
-        function imstack = zproject(obj, frames, method, previewImage)
-            imstack = ImageStack;
+        function newobj = zproject(obj, frames, method, previewImage)
+            newobj = ImageStack;
             nframes = obj.numFrames();
             if nframes <= 1
                 errordlg('Requires an image stack.', 'Z-Project');
@@ -375,6 +375,9 @@ classdef ImageStack < handle
                 ok = false; % OK dialog button will set back to true
                 showPreview_();
                 uiwait(dlg); % block until dialog closed
+                if ~ok % dialog canceled
+                    return
+                end
             end
             % dialog callbacks
             function ok_(varargin)
@@ -398,36 +401,36 @@ classdef ImageStack < handle
                 end
                 showPreview_();
             end
-            function frame = getZProjectedFrame_()
-                frame = [];
-                if isempty(frames)
+            function im = getZProjectedImage_()
+                im = [];
+                if isempty(im)
                     return
                 end
                 try
                     if method == "Mean"
-                        frame = mean(obj.data(:,:,:,frames), 4);
+                        im = mean(obj.data(:,:,:,frames), 4);
                     elseif method == "Min"
-                        frame = min(obj.data(:,:,:,frames), [], 4);
+                        im = min(obj.data(:,:,:,frames), [], 4);
                     elseif method == "Max"
-                        frame = max(obj.data(:,:,:,frames), [], 4);
+                        im = max(obj.data(:,:,:,frames), [], 4);
                     end
                 catch
-                    frame = [];
+                    im = [];
                 end
             end
             function showPreview_()
                 if ~exist('previewImage', 'var') || ~isgraphics(previewImage)
                     return
                 end
-                frame = getZProjectedFrame_();
-                if isempty(frame)
+                im = getZProjectedImage_();
+                if isempty(im)
                     return
                 end
-                if size(frame,3) == 1
-                    I = imadjust(frame);
+                if size(im,3) == 1
+                    I = imadjust(im);
                     rgb = cat(3,I,I,I);
-                elseif size(frame,3) == 3
-                    rgb = imadjust(frame);
+                elseif size(im,3) == 3
+                    rgb = imadjust(im);
                 else
                     return
                 end
@@ -435,14 +438,11 @@ classdef ImageStack < handle
                 previewImage.XData = [1 size(rgb,2)];
                 previewImage.YData = [1 size(rgb,1)];
             end
-            if ~ok % dialog canceled
-                return
-            end
-            imstack.data = getZProjectedFrame_();
-            imstack.label = string(sprintf('%s %s %d-%d', obj.label, method, frames(1), frames(end)));
+            newobj.data = getZProjectedImage_();
+            newobj.label = string(sprintf('%s %s %d-%d', obj.label, method, frames(1), frames(end)));
         end
         
-        function applyGaussianFilter(obj, sigma, previewFrame, previewImage)
+        function gaussFilter(obj, frame, sigma, previewImage, applyToAllFrames)
             if isempty(obj.data)
                 errordlg('Requires an image.', 'Gaussian Filter');
                 return
@@ -452,49 +452,53 @@ classdef ImageStack < handle
                 errordlg('Requires a grayscale image.', 'Gaussian Filter');
                 return
             end
+            if ~exist('frame', 'var') || isempty(frame)
+                frame = 1;
+            end
+            nframes = obj.numFrames();
+            frame = max(1, min(frame, nframes));
             if ~exist('sigma', 'var')
                 sigma = [];
-            end
-            if ~exist('previewFrame', 'var') || isempty(previewFrame)
-                previewFrame = 1;
             end
             if ~exist('previewImage', 'var')
                 previewImage = gobjects(0);
             end
-            nframes = obj.numFrames();
-            previewFrame = max(1, min(previewFrame, nframes));
-            im = obj.frame(previewFrame);
-            [im, sigma] = ImageStack.gaussianFilterImage(im, sigma, previewImage);
+            im = obj.getFrame(frame);
+            [im, sigma] = ImageOps.gaussFilterPreview(im, sigma, previewImage);
             if isempty(im)
                 return
             end
+            % filter frame
             for c = 1:nchannels
-                obj.data(:,:,c,previewFrame) = imgaussfilt(obj.data(:,:,c,previewFrame), sigma);
+                obj.data(:,:,c,frame) = imgaussfilt(obj.data(:,:,c,frame), sigma);
             end
+            % filter all other frames?
             if nframes > 1
-                if questdlg('Apply Gaussian filter to all frames in stack?', ...
+                if ~exist('applyToAllFrames', 'var')
+                    applyToAllFrames = questdlg('Apply Gaussian filter to all frames in stack?', ...
                         'Filter entire image stack?', ...
-                        'OK', 'Cancel', 'Cancel') == "Cancel"
-                    return
+                        'OK', 'Cancel', 'Cancel') == "Cancel";
                 end
-                wb = waitbar(0, 'Filtering stack...');
-                framesPerWaitbarUpdate = floor(double(nframes) / 20);
-                for t = 1:nframes
-                    if t ~= previewFrame
-                        for c = 1:nchannels
-                            obj.data(:,:,c,t) = imgaussfilt(obj.data(:,:,c,t), sigma);
-                        end
-                        % updating waitbar is expensive, so do it sparingly
-                        if mod(t, framesPerWaitbarUpdate) == 0
-                            waitbar(double(t) / nframes, wb);
+                if applyToAllFrames
+                    wb = waitbar(0, 'Filtering stack...');
+                    framesPerWaitbarUpdate = floor(double(nframes) / 20);
+                    for t = 1:nframes
+                        if t ~= frame
+                            for c = 1:nchannels
+                                obj.data(:,:,c,t) = imgaussfilt(obj.data(:,:,c,t), sigma);
+                            end
+                            % updating waitbar is expensive, so do it sparingly
+                            if mod(t, framesPerWaitbarUpdate) == 0
+                                waitbar(double(t) / nframes, wb);
+                            end
                         end
                     end
+                    close(wb);
                 end
-                close(wb);
             end
         end
         
-        function applyTophatFilter(obj, diskRadius, previewFrame, previewImage)
+        function tophatFilter(obj, frame, diskRadius, previewImage, applyToAllFrames)
             if isempty(obj.data)
                 errordlg('Requires an image.', 'Tophat Filter');
                 return
@@ -504,51 +508,55 @@ classdef ImageStack < handle
                 errordlg('Requires a grayscale image.', 'Tophat Filter');
                 return
             end
+            if ~exist('frame', 'var') || isempty(frame)
+                frame = 1;
+            end
+            nframes = obj.numFrames();
+            frame = max(1, min(frame, nframes));
             if ~exist('diskRadius', 'var')
                 diskRadius = [];
-            end
-            if ~exist('previewFrame', 'var') || isempty(previewFrame)
-                previewFrame = 1;
             end
             if ~exist('previewImage', 'var')
                 previewImage = gobjects(0);
             end
-            nframes = obj.numFrames();
-            previewFrame = max(1, min(previewFrame, nframes));
-            im = obj.frame(previewFrame);
-            [im, diskRadius] = ImageStack.tophatFilterImage(im, diskRadius, previewImage);
+            im = obj.getFrame(frame);
+            [im, diskRadius] = ImageOps.tophatFilterPreview(im, diskRadius, previewImage);
             if isempty(im)
                 return
             end
+            % filter frame
             disk = strel('disk', diskRadius);
             for c = 1:nchannels
-                obj.data(:,:,c,previewFrame) = imtophat(obj.data(:,:,c,previewFrame), disk);
+                obj.data(:,:,c,frame) = imtophat(obj.data(:,:,c,frame), disk);
             end
+            % filter all other frames?
             if nframes > 1
-                if questdlg('Apply tophat filter to all frames in stack?', ...
+                if ~exist('applyToAllFrames', 'var')
+                    applyToAllFrames = questdlg('Apply tophat filter to all frames in stack?', ...
                         'Filter entire image stack?', ...
-                        'OK', 'Cancel', 'Cancel') == "Cancel"
-                    return
+                        'OK', 'Cancel', 'Cancel') == "Cancel";
                 end
-                wb = waitbar(0, 'Filtering stack...');
-                framesPerWaitbarUpdate = floor(double(nframes) / 20);
-                for t = 1:nframes
-                    if t ~= previewFrame
-                        for c = 1:nchannels
-                            obj.data(:,:,c,t) = imtophat(obj.data(:,:,c,t), disk);
-                        end
-                        % updating waitbar is expensive, so do it sparingly
-                        if mod(t, framesPerWaitbarUpdate) == 0
-                            waitbar(double(t) / nframes, wb);
+                if applyToAllFrames
+                    wb = waitbar(0, 'Filtering stack...');
+                    framesPerWaitbarUpdate = floor(double(nframes) / 20);
+                    for t = 1:nframes
+                        if t ~= frame
+                            for c = 1:nchannels
+                                obj.data(:,:,c,t) = imtophat(obj.data(:,:,c,t), disk);
+                            end
+                            % updating waitbar is expensive, so do it sparingly
+                            if mod(t, framesPerWaitbarUpdate) == 0
+                                waitbar(double(t) / nframes, wb);
+                            end
                         end
                     end
+                    close(wb);
                 end
-                close(wb);
             end
         end
         
-        function imstack = getThresholdMask(obj, frame, threshold, previewImage)
-            imstack = ImageStack;
+        function newobj = threshold(obj, frame, threshold, previewImage)
+            newobj = ImageStack;
             if isempty(obj.data)
                 errordlg('Requires an image.', 'Threshold');
                 return
@@ -561,21 +569,21 @@ classdef ImageStack < handle
             if ~exist('frame', 'var') || isempty(frame)
                 frame = 1;
             end
+            nframes = obj.numFrames();
+            frame = max(1, min(frame, nframes));
             if ~exist('threshold', 'var')
                 threshold = [];
             end
             if ~exist('previewImage', 'var')
                 previewImage = gobjects(0);
             end
-            nframes = obj.numFrames();
-            frame = max(1, min(frame, nframes));
-            im = obj.frame(frame);
-            [mask, threshold] = ImageStack.thresholdImage(im, threshold, previewImage);
+            im = obj.getFrame(frame);
+            [mask, threshold] = ImageOps.thresholdPreview(im, threshold, previewImage);
             if isempty(mask)
                 return
             end
-            imstack.data = mask;
-            imstack.label = string(sprintf('%s Threshold %f', obj.label, threshold));
+            newobj.data = mask;
+            newobj.label = string(sprintf('%s Threshold %f', obj.label, threshold));
         end
     end
     
@@ -598,350 +606,6 @@ classdef ImageStack < handle
                 end
             else
                 obj = s;
-            end
-        end
-        
-        function [filteredim, sigma] = gaussianFilterImage(im, sigma, previewImage)
-            filteredim = [];
-            if isempty(im)
-                errordlg('Requires an image.', 'Gaussian Filter');
-                return
-            end
-            if size(im,3) > 1
-                errordlg('Requires a grayscale image.', 'Gaussian Filter');
-                return
-            end
-            if (exist('previewImage', 'var') && isgraphics(previewImage)) ...
-                    || ~exist('sigma', 'var') || isempty(sigma)
-                % parameter dialog
-                if ~exist('sigma', 'var') || isempty(sigma)
-                    sigma = 1;
-                end
-                dlg = dialog('Name', 'Gaussian Filter');
-                w = 200;
-                lh = 20;
-                h = lh + 30;
-                dlg.Position(3) = w;
-                dlg.Position(4) = h;
-                y = h - lh;
-                uicontrol(dlg, 'Style', 'text', 'String', 'Sigma', ...
-                    'Units', 'pixels', 'Position', [0, y, w/2, lh]);
-                uicontrol(dlg, 'Style', 'edit', 'String', num2str(sigma), ...
-                    'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
-                    'Callback', @setSigma_);
-                y = 0;
-                uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
-                    'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
-                    'Callback', @ok_);
-                uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
-                    'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
-                    'Callback', 'delete(gcf)');
-                ok = false; % OK dialog button will set back to true
-                showPreview_();
-                uiwait(dlg); % block until dialog closed
-            end
-            % dialog callbacks
-            function ok_(varargin)
-                ok = true;
-                delete(dlg);
-            end
-            function setSigma_(edit, varargin)
-                sigma = str2num(edit.String);
-                showPreview_();
-            end
-            function fim = getFilteredImage_()
-                try
-                    fim = imgaussfilt(im, sigma);
-                catch
-                    fim = [];
-                end
-            end
-            function showPreview_()
-                if ~exist('previewImage', 'var') || ~isgraphics(previewImage)
-                    return
-                end
-                fim = getFilteredImage_();
-                if isempty(fim)
-                    return
-                end
-                I = imadjust(fim);
-                rgb = cat(3,I,I,I);
-                previewImage.CData = rgb;
-                previewImage.XData = [1 size(rgb,2)];
-                previewImage.YData = [1 size(rgb,1)];
-            end
-            if ~ok % dialog canceled
-                return
-            end
-            filteredim = getFilteredImage_();
-        end
-        
-        function [filteredim, diskRadius] = tophatFilterImage(im, diskRadius, previewImage)
-            filteredim = [];
-            if isempty(im)
-                errordlg('Requires an image.', 'Tophat Filter');
-                return
-            end
-            if size(im,3) > 1
-                errordlg('Requires a grayscale image.', 'Gaussian Filter');
-                return
-            end
-            if (exist('previewImage', 'var') && isgraphics(previewImage)) ...
-                    || ~exist('diskRadius', 'var') || isempty(diskRadius)
-                % parameter dialog
-                if ~exist('diskRadius', 'var') || isempty(diskRadius)
-                    diskRadius = 2;
-                end
-                dlg = dialog('Name', 'Tophat Filter');
-                w = 200;
-                lh = 20;
-                h = lh + 30;
-                dlg.Position(3) = w;
-                dlg.Position(4) = h;
-                y = h - lh;
-                uicontrol(dlg, 'Style', 'text', 'String', 'Disk Radius', ...
-                    'Units', 'pixels', 'Position', [0, y, w/2, lh]);
-                uicontrol(dlg, 'Style', 'edit', 'String', num2str(diskRadius), ...
-                    'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
-                    'Callback', @setDiskRadius_);
-                y = 0;
-                uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
-                    'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
-                    'Callback', @ok_);
-                uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
-                    'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
-                    'Callback', 'delete(gcf)');
-                ok = false; % OK dialog button will set back to true
-                showPreview_();
-                uiwait(dlg); % block until dialog closed
-            end
-            % dialog callbacks
-            function ok_(varargin)
-                ok = true;
-                delete(dlg);
-            end
-            function setDiskRadius_(edit, varargin)
-                diskRadius = str2num(edit.String);
-                showPreview_();
-            end
-            function fim = getFilteredImage_()
-                try
-                    fim = imtophat(im, strel('disk', diskRadius));
-                catch
-                    fim = [];
-                end
-            end
-            function showPreview_()
-                if ~exist('previewImage', 'var') || ~isgraphics(previewImage)
-                    return
-                end
-                fim = getFilteredFrame_();
-                if isempty(fim)
-                    return
-                end
-                I = imadjust(fim);
-                rgb = cat(3,I,I,I);
-                previewImage.CData = rgb;
-                previewImage.XData = [1 size(rgb,2)];
-                previewImage.YData = [1 size(rgb,1)];
-            end
-            if ~ok % dialog canceled
-                return
-            end
-            filteredim = getFilteredImage_();
-        end
-        
-        function [maskim, threshold] = thresholdImage(im, threshold, previewImage)
-            maskim = [];
-            if isempty(im)
-                errordlg('Requires an image.', 'Threshold');
-                return
-            end
-            if size(im,3) > 1
-                errordlg('Requires a grayscale image.', 'Gaussian Filter');
-                return
-            end
-            if (exist('previewImage', 'var') && isgraphics(previewImage)) ...
-                    || ~exist('threshold', 'var') || isempty(threshold)
-                % parameter dialog
-                if ~exist('threshold', 'var') || isempty(threshold)
-                    counts = imhist(im, 100);
-                    threshold = otsuthresh(counts);
-                end
-                dlg = dialog('Name', 'Threshold');
-                w = 500;
-                lh = 20;
-                h = 2 * lh + 30;
-                dlg.Position(3) = w;
-                dlg.Position(4) = h;
-                y = h - lh;
-                uicontrol(dlg, 'Style', 'text', 'String', 'Threshold', ...
-                    'Units', 'pixels', 'Position', [0, y, w/2, lh]);
-                thresholdEdit = uicontrol(dlg, 'Style', 'edit', 'String', num2str(threshold), ...
-                    'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
-                    'Callback', @(s,e) setThreshold_());
-                y = y - lh;
-                mini = quantile(im(:), 0.01);
-                maxi = quantile(im(:), 0.99);
-                nsteps = 5000;
-                thresholdSlider = uicontrol(dlg, 'Style', 'slider', ...
-                    'Min', mini, 'Max', maxi, 'Value', threshold, ...
-                    'SliderStep', [1.0/nsteps 1.0/nsteps], ...
-                    'Units', 'pixels', 'Position', [0, y, w, lh], ...
-                    'Callback', @(s,e) thresholdMoved_());
-                addlistener(thresholdSlider, 'Value', 'PostSet', @(s,e) thresholdMoved_());
-                y = 0;
-                uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
-                    'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
-                    'Callback', @ok_);
-                uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
-                    'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
-                    'Callback', 'delete(gcf)');
-                ok = false; % OK dialog button will set back to true
-                showPreview_();
-                uiwait(dlg); % block until dialog closed
-            end
-            % dialog callbacks
-            function ok_(varargin)
-                ok = true;
-                delete(dlg);
-            end
-            function setThreshold_()
-                threshold = str2num(thresholdEdit.String);
-                threshold = max(thresholdSlider.Min, min(threshold, thresholdSlider.Max));
-                thresholdEdit.String = num2str(threshold);
-                thresholdSlider.Value = threshold;
-                showPreview_();
-            end
-            function thresholdMoved_()
-                threshold = thresholdSlider.Value;
-                thresholdEdit.String = num2str(threshold);
-                showPreview_();
-            end
-            function mask = getThresholdedMask_()
-                try
-                    mask = imbinarize(im, threshold);
-                catch
-                    mask = [];
-                end
-            end
-            function showPreview_()
-                if ~exist('previewImage', 'var') || ~isgraphics(previewImage)
-                    return
-                end
-                mask = getThresholdedMask_();
-                if isempty(mask)
-                    return
-                end
-                I = imadjust(mask);
-                rgb = cat(3,I,I,I);
-                previewImage.CData = rgb;
-                previewImage.XData = [1 size(mask,2)];
-                previewImage.YData = [1 size(mask,1)];
-            end
-            if ~ok % dialog canceled
-                return
-            end
-            maskim = getThresholdedMask_();
-        end
-        
-        function xy = findImageMaxima(im, minPeakProminence, minPeakSeparation, fastButApproxMergeOfNearbyMaxima)
-            % xy: [x y] coords of local maxima in image im.
-            % minPeakProminence: size of local peak to be considered as a maxima
-            % minPeakSeparation: min separation between maxima
-            % fastButApproxMergeOfNearbyMaxima: set to true to skip the final slow but
-            %   sure merge of nearby maxima. Useful during a live update when searching
-            %   for optimal parameters as a bad choice can result in many maxima and a
-            %   very slow final merge. Once the optimal parameters are found, the slow
-            %   but sure merge should be used.
-            % Hint: Might want to smooth image first to reduce maxima due to noise.
-            % e.g. im = imgaussfilt(im, ...)
-            
-            xy = [];
-            if isempty(im)
-                errordlg('Requires an image.', 'Find Maxima');
-                return
-            end
-            if size(im,3) > 1
-                errordlg('Requires a grayscale image.', 'Find Maxima');
-                return
-            end
-
-            % find maxima along each row of image
-            im = double(im);
-            nrows = size(im,1);
-            ncols = size(im,2);
-            for row = 1:nrows
-                [~,x] = findpeaks(im(row,:), ...
-                    'MinPeakProminence', minPeakProminence, 'MinPeakDistance', minPeakSeparation);
-                if ~isempty(x)
-                    x = reshape(x,[],1);
-                    y = repmat(row, size(x));
-                    xy = [xy; [x y]];
-                end
-            end
-            if isempty(xy)
-                return
-            end
-
-            % fast merge nearby maxima (could miss a few)
-            % Two repeats usually merges most if not all nearby maxima.
-            % Afterwards we'll use a more computationally expensive algorithm to make
-            % sure all nearby maxima are merged.
-            for repeat = 1:2
-                newxy = [];
-                didMergeMaxima = false;
-                while ~isempty(xy)
-                    dists = sqrt(sum((xy - repmat(xy(1,:), [size(xy,1), 1])).^2, 2));
-                    near = find(dists < minPeakSeparation);
-                    if numel(near) == 1
-                        newxy = [newxy; xy(1,:)];
-                        xy(1,:) = [];
-                    else
-                        peaks = zeros([1, numel(near)]);
-                        for j = 1:numel(near)
-                            peaks(j) = im(xy(near(j),2), xy(near(j),1));
-                        end
-                        [~,idx] = max(peaks);
-                        idx = near(idx(1));
-                        newxy = [newxy; xy(idx,:)];
-                        xy(near,:) = [];
-                        didMergeMaxima = true;
-                    end
-                end
-                xy = newxy;
-                if ~didMergeMaxima
-                    break
-                end
-            end
-
-            % return now if we specified NOT to do the slow but sure merge     
-            if exist('fastButApproxMergeOfNearbyMaxima', 'var') && fastButApproxMergeOfNearbyMaxima
-                return
-            end
-
-            % make sure all nearby maxima get merged
-            % This is slow, so helps to limit the number of maxima before doing this.
-            pd = squareform(pdist(xy));
-            pd(logical(eye(size(pd,1)))) = inf; % to keep min() from returning diag elements
-            [mind, ind] = min(pd(:));
-            while mind < minPeakSeparation
-                [i,j] = ind2sub(size(pd), ind);
-                rowi = xy(i,2);
-                coli = xy(i,1);
-                rowj = xy(j,2);
-                colj = xy(j,1);
-                % remove maxima with smallest pixel intensity
-                % this isn't a perfect logic, but it works pretty well in practice
-                if im(rowi,coli) >= im(rowj,colj)
-                    k = j;
-                else
-                    k = i;
-                end
-                xy(k,:) = [];
-                pd(:,k) = [];
-                pd(k,:) = [];
-                [mind, ind] = min(pd(:));
             end
         end
     end
