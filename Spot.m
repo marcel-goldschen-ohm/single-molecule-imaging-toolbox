@@ -11,6 +11,9 @@ classdef Spot < handle
         % vector x,y --> per frame locations (i.e. for drift correction)
         xy = [];
         
+        % e.g. from regionprops()
+        props = struct();
+        
         % labels can be used ot group spots
         label = "";
         
