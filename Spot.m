@@ -11,7 +11,7 @@ classdef Spot < handle
         % vector x,y --> per frame locations (i.e. for drift correction)
         xy = [];
         
-        % e.g. from regionprops()
+        % e.g. from regionprops() --> Area, Eccentricity, etc.
         props = struct();
         
         % labels can be used ot group spots
@@ -27,7 +27,21 @@ classdef Spot < handle
     methods
         function obj = Spot()
             %SPOT Construct an instance of this class
-            %   Detailed explanation goes here
+        end
+        
+        function [pixelsXY, pixelIndices] = getPixelsInSpot(obj, radius, imageSize)
+            %GETPIXELSINSPOT Return all pixels within radius of xy.
+            xc = obj.xy(1);
+            yc = obj.xy(2);
+            cols = max(1,floor(xc-radius)):min(ceil(xc+radius),imageSize(2));
+            rows = max(1,floor(yc-radius)):min(ceil(yc+radius),imageSize(1));
+            [xx,yy] = meshgrid(cols,rows);
+            d = sqrt(sum(([xx(:) yy(:)] - repmat([xc yc], [numel(xx) 1])).^2, 2));
+            in = (d <= radius);
+            x = int32(round(xx(in)));
+            y = int32(round(yy(in)));
+            pixelsXY = [x y];
+            pixelIndices = sub2ind(imageSize, y, x);
         end
     end
     
