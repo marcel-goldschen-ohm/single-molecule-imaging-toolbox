@@ -1,4 +1,4 @@
-classdef ImageStack < handle
+classdef (ConstructOnLoad) ImageStack < handle
     %IMAGESTACK Handle to image stack data.
     %   Pass this handle object around to avoid copying large image stack
     %   data arrays. Stores info (e.g. filepath, frames, viewport) for
@@ -587,26 +587,9 @@ classdef ImageStack < handle
         end
     end
     
-    methods(Static)
+    methods (Static)
         function obj = loadobj(s)
-            if isstruct(s)
-                obj = ImageStack();
-                for prop = fieldnames(obj)
-                    if isfield(s, prop)
-                        try
-                            obj.(prop) = s.(prop);
-                        catch
-                            disp(['!!! ERROR: ' class(obj) ': Failed to load property ' prop]);
-                        end
-                    end
-                end
-                unloadedProps = setdiff(fieldnames(s), fieldnames(obj));
-                if ~isempty(unloadedProps)
-                    disp(['!!! WARNING: ' class(obj) ': Did NOT load invalid properties: ' strjoin(unloadedProps, ',')]);
-                end
-            else
-                obj = s;
-            end
+            obj = Utilities.loadobj(ImageStack(), s);
         end
     end
 end
