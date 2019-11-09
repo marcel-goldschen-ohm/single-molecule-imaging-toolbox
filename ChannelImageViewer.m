@@ -29,6 +29,16 @@ classdef ChannelImageViewer < ImageStackViewer
             obj@ImageStackViewer(parent);
         end
         
+        function set.channel(obj, channel)
+            % set handle to channel and update displayed image
+            obj.channel = channel;
+            if ~isempty(channel.images)
+                obj.imageStack = channel.images(1);
+            else
+                obj.imageStack = ImageStack();
+            end
+        end
+        
         function idx = getSelectedImageIndex(obj)
             idx = 0;
             for i = 1:numel(obj.channel.images)
@@ -50,28 +60,27 @@ classdef ChannelImageViewer < ImageStackViewer
             fig = ancestor(obj.Parent, 'Figure');
             menu = uicontextmenu(fig);
             
-            otherChannels = obj.getOtherChannelsInParentExperiment();
+            uimenu(menu, 'Label', 'Load Image', ...
+                'Callback', @obj.loadImage);
             
             selectedImageIndex = obj.getSelectedImageIndex();
-            selectImageMenu = uimenu(menu, 'Label', 'Select Image');
+            selectImageMenu = uimenu(menu, 'Label', 'Select Image', ...
+                'Separator', 'on');
             for i = 1:numel(obj.channel.images)
                 uimenu(selectImageMenu, 'Label', obj.channel.images(i).getLabelWithSizeInfo(), ...
                     'Checked', i == selectedImageIndex, ...
                     'Callback', @(varargin) obj.selectImage(i));
             end
             
-            uimenu(menu, 'Label', 'Edit Image Label', ...
+            uimenu(menu, 'Label', 'Edit Image Info', ...
                 'Separator', 'on', ...
-                'Callback', @obj.editSelectedImageLabel);
-            
-            uimenu(menu, 'Label', 'Load Image', ...
-                'Separator', 'on', ...
-                'Callback', @obj.loadImage);
+                'Callback', @obj.editSelectedImageInfo);
             
             removeImageMenu = uimenu(menu, 'Label', 'Remove Image', ...
                 'Separator', 'on');
             for i = 1:numel(obj.channel.images)
                 uimenu(removeImageMenu, 'Label', obj.channel.images(i).getLabelWithSizeInfo(), ...
+                    'Checked', i == selectedImageIndex, ...
                     'Callback', @(varargin) obj.removeImage(i, true));
             end
             
@@ -83,6 +92,8 @@ classdef ChannelImageViewer < ImageStackViewer
             uimenu(imageOpsMenu, 'Label', 'Duplicate Image', ...
                 'Callback', @(varargin) obj.duplicateSelectedImage());
             
+            %otherChannels = obj.getOtherChannelsInParentExperiment();
+            
             menu.Position(1:2) = get(fig, 'CurrentPoint');
             menu.Visible = 1;
         end
@@ -91,13 +102,13 @@ classdef ChannelImageViewer < ImageStackViewer
             obj.imageStack = obj.channel.images(idx);
         end
         
-        function editSelectedImageLabel(obj, varargin)
+        function editSelectedImageInfo(obj, varargin)
             if ~obj.getSelectedImageIndex()
                 return
             end
             answer = inputdlg( ...
-                {char(obj.imageStack.label)}, ...
-                'Image Label', 1, ...
+                {'label'}, ...
+                'Image Info', 1, ...
                 {char(obj.imageStack.label)});
             if isempty(answer)
                 return
@@ -109,7 +120,7 @@ classdef ChannelImageViewer < ImageStackViewer
         function loadImage(obj, varargin)
             newImage = ImageStack;
             newImage.load('', '', [], [], true);
-            obj.channel.images = [obj.channel.images; newImage];
+            obj.channel.images = [obj.channel.images newImage];
             obj.imageStack = newImage;
             [~, newImage.label, ~] = fileparts(newImage.filepath);
             obj.editSelectedImageLabel();
@@ -185,7 +196,7 @@ classdef ChannelImageViewer < ImageStackViewer
                 else
                     newImage.label = string(sprintf('%s %d', obj.imageStack.label, frames));
                 end
-                obj.channel.images = [obj.channel.images; newImage];
+                obj.channel.images = [obj.channel.images newImage];
                 obj.imageStack = newImage;
             catch
             end
