@@ -403,12 +403,13 @@ classdef (ConstructOnLoad) ImageStack < handle
             end
             function im = getZProjectedImage_()
                 im = [];
-                if isempty(im)
+                if isempty(obj.data)
                     return
                 end
                 try
                     if method == "Mean"
                         im = mean(obj.data(:,:,:,frames), 4);
+                        size(im)
                     elseif method == "Min"
                         im = min(obj.data(:,:,:,frames), [], 4);
                     elseif method == "Max"
@@ -427,7 +428,7 @@ classdef (ConstructOnLoad) ImageStack < handle
                     return
                 end
                 if size(im,3) == 1
-                    I = imadjust(im);
+                    I = imadjust(uint16(im));
                     rgb = cat(3,I,I,I);
                 elseif size(im,3) == 3
                     rgb = imadjust(im);
@@ -474,7 +475,7 @@ classdef (ConstructOnLoad) ImageStack < handle
             end
             % filter all other frames?
             if nframes > 1
-                if ~exist('applyToAllFrames', 'var')
+                if ~exist('applyToAllFrames', 'var') || isempty(applyToAllFrames)
                     applyToAllFrames = questdlg('Apply Gaussian filter to all frames in stack?', ...
                         'Filter entire image stack?', ...
                         'OK', 'Cancel', 'Cancel') == "Cancel";
@@ -531,7 +532,7 @@ classdef (ConstructOnLoad) ImageStack < handle
             end
             % filter all other frames?
             if nframes > 1
-                if ~exist('applyToAllFrames', 'var')
+                if ~exist('applyToAllFrames', 'var') || isempty(applyToAllFrames)
                     applyToAllFrames = questdlg('Apply tophat filter to all frames in stack?', ...
                         'Filter entire image stack?', ...
                         'OK', 'Cancel', 'Cancel') == "Cancel";
@@ -583,7 +584,7 @@ classdef (ConstructOnLoad) ImageStack < handle
                 return
             end
             newobj.data = mask;
-            newobj.label = string(sprintf('%s Threshold %f', obj.label, threshold));
+            newobj.label = string(sprintf('%s Threshold %.1f', obj.label, threshold));
         end
     end
     
