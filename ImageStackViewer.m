@@ -15,18 +15,18 @@ classdef ImageStackViewer < handle
         Position = [];
         
         % Image axes.
-        imageAxes
+        imageAxes = gobjects(0);
         
         % Image graphics object for displaying a frame of the image stsack
         % in imageAxes.
-        imageFrame
+        imageFrame = gobjects(0);
         
         % Slider for changing the displayed image frame.
-        frameSlider
+        frameSlider = gobjects(0);
         
         % Text for displaying info about the image stack or cursor
         % locaiton, etc.
-        infoText
+        infoText = gobjects(0);
         
         % Optional toolbar panel.
         toolbarPanel = gobjects(0);
