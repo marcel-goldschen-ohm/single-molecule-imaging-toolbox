@@ -19,7 +19,7 @@ classdef ImageOps < handle
                     || ~exist('sigma', 'var') || isempty(sigma)
                 % parameter dialog
                 if ~exist('sigma', 'var') || isempty(sigma)
-                    sigma = 1;
+                    sigma = 0.5;
                 end
                 dlg = dialog('Name', 'Gaussian Filter');
                 w = 200;
@@ -77,7 +77,7 @@ classdef ImageOps < handle
                 if isempty(fim)
                     return
                 end
-                I = imadjust(fim);
+                I = imadjust(uint16(fim));
                 rgb = cat(3,I,I,I);
                 previewImage.CData = rgb;
                 previewImage.XData = [1 size(rgb,2)];
@@ -162,7 +162,7 @@ classdef ImageOps < handle
                 if isempty(fim)
                     return
                 end
-                I = imadjust(fim);
+                I = imadjust(uint16(fim));
                 rgb = cat(3,I,I,I);
                 previewImage.CData = rgb;
                 previewImage.XData = [1 size(rgb,2)];
