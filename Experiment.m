@@ -1,6 +1,7 @@
 classdef (ConstructOnLoad) Experiment < handle
-    %EXPERIMENT Summary of this class goes here
-    %   Detailed explanation goes here
+    %EXPERIMENT Data for an entire single-molecule imaging experiment.
+    %   - Array of channels with associated image stacks and spots.
+    %   - Aligned spots across all channels.
     %
     %	Created by Marcel Goldschen-Ohm
     %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
@@ -9,10 +10,10 @@ classdef (ConstructOnLoad) Experiment < handle
         notes = '';
         
         % array of channel data
-        channels = repmat(Channel, 0);
+        channels = Channel.empty;
         
-        % [#spots x #channels] struct matrix of spot z-projections
-        alignedSpots = repmat(Spot, 0);
+        % [#spots x #channels] matrix of spots
+        alignedSpots = Spot.empty;
     end
     
     properties (Access = private)
@@ -27,55 +28,9 @@ classdef (ConstructOnLoad) Experiment < handle
         end
     end
     
-    methods(Static)
+    methods (Static)
         function obj = loadobj(s)
-            if isstruct(s)
-                obj = Experiment();
-                for prop = fieldnames(obj)
-                    if isfield(s, prop)
-                        try
-                            if isstruct(obj.(prop))
-                                obj.(prop) = Experiment.makeStructArraysCompatible(s.(prop), obj.(prop));
-                            else
-                                obj.(prop) = s.(prop);
-                            end
-                        catch
-                            disp(['!!! ERROR: ' class(obj) ': Failed to load property ' prop]);
-                        end
-                    end
-                end
-                unloadedProps = setdiff(fieldnames(s), fieldnames(obj));
-                if ~isempty(unloadedProps)
-                    disp(['!!! WARNING: ' class(obj) ': Did NOT load invalid properties: ' strjoin(unloadedProps, ',')]);
-                end
-            else
-                obj = s;
-            end
-        end
-        
-        function [A, B] = makeStructArraysCompatible(A, B)
-            % Adds default empty fields to struct arrays A and B as needed so that they
-            % have identical fieldnames.
-            fa = fieldnames(A);
-            fb = fieldnames(B);
-            fab = union(fa, fb);
-            for k = 1:numel(fab)
-                if ~isfield(A, fab{k})
-                    bk = B(1).(fab{k});
-                    if isobject(bk)
-                        [A.(fab{k})] = deal(eval(class(bk)));
-                    else
-                        [A.(fab{k})] = deal([]);
-                    end
-                elseif ~isfield(B, fab{k})
-                    ak = A(1).(fab{k});
-                    if isobject(ak)
-                        [B.(fab{k})] = deal(eval(class(ak)));
-                    else
-                        [B.(fab{k})] = deal([]);
-                    end
-                end
-            end
+            obj = Utilities.loadobj(Experiment(), s);
         end
     end
 end
