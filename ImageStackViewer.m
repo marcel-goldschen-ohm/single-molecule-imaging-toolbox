@@ -214,10 +214,10 @@ classdef ImageStackViewer < handle
             if isempty(frame)
                 obj.imageFrame.CData = [];
             elseif size(frame,3) == 1 % monochrome
-                I = imadjust(frame);
+                I = imadjust(uint16(frame));
                 obj.imageFrame.CData = cat(3,I,I,I);
             elseif size(frame,3) == 3 % assume RGB
-                obj.imageFrame.CData = imadjust(frame);
+                obj.imageFrame.CData = imadjust(uint16(frame));
             else
                 errordlg('Currently only handles grayscale or RGB images.', 'Image Format Error');
             end
