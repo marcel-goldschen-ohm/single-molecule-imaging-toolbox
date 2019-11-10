@@ -14,8 +14,9 @@ classdef (ConstructOnLoad) Spot < handle
         % e.g. from regionprops() --> Area, Eccentricity, etc.
         props = struct.empty;
         
-        % labels can be used ot group spots
-        label = "";
+        % tags can be used to group spots
+        % can be a comma-separated list of tags
+        tag = "";
         
         % spot image intensity z-projection
         zproj = [];
