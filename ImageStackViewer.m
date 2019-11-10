@@ -140,7 +140,7 @@ classdef ImageStackViewer < handle
             else
                 obj.frameSlider.Visible = 'off';
             end
-            obj.showFrame(1);
+            obj.showFrame(obj.getCurrentFrameIndex());
             obj.zoomOutFullImage();
             obj.resize(); % reposition slider and info text relative to image
         end
@@ -204,6 +204,16 @@ classdef ImageStackViewer < handle
             t = uint32(round(obj.frameSlider.Value));
             t = max(obj.frameSlider.Min, min(t, obj.frameSlider.Max));
             obj.showFrame(t);
+        end
+        
+        function t = getCurrentFrameIndex(obj)
+            t = 0;
+            nframes = obj.imageStack.numFrames();
+            if nframes == 1
+                t = 1;
+            elseif nframes > 1
+                t = max(1, min(obj.frameSlider.Value, nframes));
+            end
         end
         
         function showFrame(obj, t)
