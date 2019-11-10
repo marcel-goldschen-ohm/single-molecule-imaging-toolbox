@@ -440,7 +440,7 @@ classdef ImageOps < handle
                 if exist('previewImage', 'var') && isgraphics(previewImage)
                     ax = previewImage.Parent;
                     hold(ax, 'on');
-                    previewMaxima = scatter(ax, nan, nan, 'ro', ...
+                    previewMaxima = scatter(ax, nan, nan, 'r+', ...
                         'HitTest', 'off', ...
                         'PickableParts', 'none');
                 end
@@ -503,7 +503,7 @@ classdef ImageOps < handle
                     return
                 end
                 [xy_, im_] = findMaxima_(true); % approx but fast merging of nearby maxima for live update
-                I = imadjust(im_);
+                I = imadjust(uint16(im_));
                 rgb = cat(3,I,I,I);
                 previewImage.CData = rgb;
                 previewImage.XData = [1 size(rgb,2)];
@@ -515,8 +515,8 @@ classdef ImageOps < handle
                     previewMaxima.XData = nan;
                     previewMaxima.YData = nan;
                 else
-                    previewMaxima.XData = xy(:,1);
-                    previewMaxima.YData = xy(:,2);
+                    previewMaxima.XData = xy_(:,1);
+                    previewMaxima.YData = xy_(:,2);
                 end
             end
             % find maxima
