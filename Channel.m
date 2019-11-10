@@ -27,6 +27,13 @@ classdef (ConstructOnLoad) Channel < handle
             %CHANNEL Construct an instance of this class
             %   Detailed explanation goes here
         end
+        
+        function channels = getOtherChannelsInExperiment(obj)
+            channels = Channel.empty;
+            if ~isempty(obj.experiment)
+                channels = setdiff(obj.experiment.channels, obj);
+            end
+        end
     end
     
     methods (Static)
