@@ -26,6 +26,11 @@ classdef (ConstructOnLoad) Experiment < handle
             %EXPERIMENT Construct an instance of this class
             %   Detailed explanation goes here
         end
+        
+        function addChannel(obj, channel)
+            obj.channels = [obj.channels channel];
+            channel.experiment = obj;
+        end
     end
     
     methods (Static)
