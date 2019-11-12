@@ -31,13 +31,24 @@ classdef ChannelImageViewer < ImageStackViewer
             
             obj@ImageStackViewer(parent);
             
-            obj.spotMarkers = scatter(obj.imageAxes, nan, nan, 'ro');
-            obj.selectedSpotMarker = scatter(obj.imageAxes, nan, nan, 'yo');
+            obj.spotMarkers = scatter(obj.imageAxes, nan, nan, 'ro', ...
+                'HitTest', 'off', 'PickableParts', 'none');
+            obj.selectedSpotMarker = scatter(obj.imageAxes, nan, nan, 'yo', ...
+                'HitTest', 'off', 'PickableParts', 'none');
+        end
+        
+        function delete(obj)
+            h = [ ...
+                obj.spotMarkers ...
+                obj.selectedSpotMarker ...
+                ];
+            delete(h(isgraphics(h)));
         end
         
         function set.channel(obj, channel)
             % set handle to channel and update displayed image
             obj.channel = channel;
+            obj.imageAxes.YLabel.String = channel.label;
             if ~isempty(channel.images)
                 obj.imageStack = channel.images(1);
             else
@@ -56,9 +67,54 @@ classdef ChannelImageViewer < ImageStackViewer
             end
         end
         
+        function leftClickInImage(obj, x, y)
+            spotIdx = obj.selectSpot(x, y);
+            if spotIdx
+                obj.selectedSpot = obj.channel.spots(spotIdx);
+            else
+                obj.selectedSpot = Spot;
+                obj.selectedSpot.xy = [x y];
+            end
+            obj.updateSelectedSpotMarker();
+        end
+        
         function rightClickInImage(obj, x, y)
             menu = obj.getActionsMenu();
+            
+            spotIdx = obj.selectSpot(x, y);
+            if spotIdx
+                spotAction = uimenu(menu, 'Label', 'Remove Spot', ...
+                    'Callback', @(varargin) obj.removeSpot(spotIdx));
+            else
+                spotAction = uimenu(menu, 'Label', 'Add Spot', ...
+                    'Callback', @(varargin) obj.addSpot([x y]));
+            end
+            if numel(menu.Children) <= 2
+                spotAction.Separator = 1;
+            end
+            
             menu.Visible = 1;
+        end
+        
+        function idx = selectSpot(obj, x, y)
+            idx = [];
+            if ~isempty(obj.channel.spots)
+                xy = vertcat(obj.channel.spots.xy);
+                nspots = numel(obj.channel.spots);
+                d = sqrt(sum((xy - repmat([x y], [nspots 1])).^2, 2));
+                [d, idx] = min(d);
+                ax = obj.imageAxes;
+                tmpUnits = ax.Units;
+                ax.Units = 'pixels';
+                pos = ax.Position;
+                ax.Units = tmpUnits;
+                dxdy = obj.channel.spots(idx).xy - [x y];
+                dxdypix = dxdy ./ [diff(ax.XLim) diff(ax.YLim)] .* pos(3:4);
+                dpix = sqrt(sum(dxdypix.^2));
+                if dpix > 5
+                    idx = [];
+                end
+            end
         end
         
         function selectImage(obj, idx)
@@ -94,26 +150,31 @@ classdef ChannelImageViewer < ImageStackViewer
         function menu = getActionsMenu(obj)
             fig = ancestor(obj.Parent, 'Figure');
             menu = uicontextmenu(fig);
+            menu.Position(1:2) = get(fig, 'CurrentPoint');
             
-            uimenu(menu, 'Label', 'Load', ...
+            uimenu(menu, 'Label', 'Load Image', ...
                 'Callback', @obj.loadImage);
             
-            selectedImageIndex = obj.getSelectedImageIndex();
-            selectImageMenu = uimenu(menu, 'Label', 'Select', ...
-                'Separator', 'on');
-            for i = 1:numel(obj.channel.images)
-                uimenu(selectImageMenu, 'Label', obj.channel.images(i).getLabelWithSizeInfo(), ...
-                    'Checked', i == selectedImageIndex, ...
-                    'Callback', @(varargin) obj.selectImage(i));
+            if isempty(obj.channel.images)
+                return
             end
             
-            uimenu(menu, 'Label', 'Edit Info', ...
-                'Separator', 'on', ...
+            nimages = numel(obj.channel.images);
+            selectedImageIndex = obj.getSelectedImageIndex();
+            if nimages > 1
+                selectImageMenu = uimenu(menu, 'Label', 'Select Image');
+                for i = 1:nimages
+                    uimenu(selectImageMenu, 'Label', obj.channel.images(i).getLabelWithSizeInfo(), ...
+                        'Checked', i == selectedImageIndex, ...
+                        'Callback', @(varargin) obj.selectImage(i));
+                end
+            end
+            
+            uimenu(menu, 'Label', 'Edit Image Info', ...
                 'Callback', @obj.editImageInfo);
             
-            removeImageMenu = uimenu(menu, 'Label', 'Remove', ...
-                'Separator', 'on');
-            for i = 1:numel(obj.channel.images)
+            removeImageMenu = uimenu(menu, 'Label', 'Remove Image');
+            for i = 1:nimages
                 uimenu(removeImageMenu, 'Label', obj.channel.images(i).getLabelWithSizeInfo(), ...
                     'Checked', i == selectedImageIndex, ...
                     'Callback', @(varargin) obj.removeImage(i, true));
@@ -124,24 +185,20 @@ classdef ChannelImageViewer < ImageStackViewer
                 'Callback', @(varargin) obj.zoomOutFullImage());
             
             uimenu(menu, 'Label', 'Duplicate', ...
-                'Separator', 'on', ...
                 'Callback', @(varargin) obj.duplicate());
             
             if obj.imageStack.numFrames() > 1
                 uimenu(menu, 'Label', 'Z-Project', ...
-                    'Separator', 'on', ...
                     'Callback', @(varargin) obj.zproject());
             end
             
-            filterMenu = uimenu(menu, 'Label', 'Filter', ...
-                'Separator', 'on');
+            filterMenu = uimenu(menu, 'Label', 'Filter');
             uimenu(filterMenu, 'Label', 'Gaussian', ...
                     'Callback', @(varargin) obj.gaussFilter());
             uimenu(filterMenu, 'Label', 'Tophat', ...
                     'Callback', @(varargin) obj.tophatFilter());
             
             uimenu(menu, 'Label', 'Threshold', ...
-                'Separator', 'on', ...
                 'Callback', @(varargin) obj.threshold());
             
             uimenu(menu, 'Label', 'Find Spots', ...
@@ -149,7 +206,6 @@ classdef ChannelImageViewer < ImageStackViewer
                 'Callback', @(varargin) obj.findSpots());
             
             uimenu(menu, 'Label', 'Clear Spots', ...
-                'Separator', 'on', ...
                 'Callback', @(varargin) obj.clearSpots());
             
 %             otherChannels = obj.getOtherChannelsInExperiment();
@@ -167,7 +223,6 @@ classdef ChannelImageViewer < ImageStackViewer
 %                 end
 %             end
             
-            menu.Position(1:2) = get(fig, 'CurrentPoint');
             %menu.Visible = 1;
         end
         
@@ -299,7 +354,7 @@ classdef ChannelImageViewer < ImageStackViewer
                 nspots = numel(props);
                 obj.channel.spots = Spot.empty;
                 if nspots
-                    obj.channel.spots(nspots) = Spot();
+                    obj.channel.spots(nspots,1) = Spot();
                     for k = 1:nspots
                         obj.channel.spots(k).xy = props(k).Centroid;
                         obj.channel.spots(k).props = props(k);
@@ -314,7 +369,7 @@ classdef ChannelImageViewer < ImageStackViewer
                 nspots = size(xy,1);
                 obj.channel.spots = Spot.empty;
                 if nspots
-                    obj.channel.spots(nspots) = Spot();
+                    obj.channel.spots(nspots,1) = Spot();
                     for k = 1:nspots
                         obj.channel.spots(k).xy = xy(k,:);
                     end
@@ -327,6 +382,22 @@ classdef ChannelImageViewer < ImageStackViewer
         function clearSpots(obj)
             obj.channel.spots = Spot.empty;
             obj.selectedSpot = Spot.empty;
+            obj.updateSpotMarkers();
+        end
+        
+        function addSpot(obj, xy)
+            newSpot = Spot;
+            newSpot.xy = xy;
+            obj.channel.spots = [obj.channel.spots; newSpot];
+            obj.selectedSpot = newSpot;
+            obj.updateSpotMarkers();
+        end
+        
+        function removeSpot(obj, idx)
+            if obj.selectedSpot == obj.channel.spots(idx)
+                obj.selectedSpot = Spot.empty;
+            end
+            obj.channel.spots(idx) = [];
             obj.updateSpotMarkers();
         end
         

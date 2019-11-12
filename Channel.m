@@ -3,7 +3,7 @@ classdef (ConstructOnLoad) Channel < handle
     %   Detailed explanation goes here
     
     properties
-        label = "";
+        label = "Channel";
         color = [0 1 0]; % [r g b]
         notes = '';
         

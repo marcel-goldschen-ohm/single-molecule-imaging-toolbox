@@ -86,6 +86,16 @@ classdef ImageStackViewer < handle
             obj.updateResizeListener();
         end
         
+        function delete(obj)
+            h = [ ...
+                obj.imageAxes ...
+                obj.frameSlider ...
+                obj.infoText ...
+                obj.toolbarPanel ...
+                ];
+            delete(h(isgraphics(h)));
+        end
+        
         function tf = hasToolbar(obj)
             tf = ~isempty(obj.toolbarPanel) && isgraphics(obj.toolbarPanel);
         end
@@ -113,6 +123,9 @@ classdef ImageStackViewer < handle
         function set.Visible(obj, visible)
             % reparent and reposition all graphics objects
             obj.imageAxes.Visible = visible;
+            if ~isempty(obj.imageAxes.Children)
+                [obj.imageAxes.Children.Visible] = deal(visible);
+            end
             obj.frameSlider.Visible = visible;
             obj.infoText.Visible = visible;
             if obj.hasToolbar()
@@ -140,7 +153,7 @@ classdef ImageStackViewer < handle
             else
                 obj.frameSlider.Visible = 'off';
             end
-            obj.showFrame(obj.getCurrentFrameIndex());
+            obj.showFrame();
             obj.zoomOutFullImage();
             obj.resize(); % reposition slider and info text relative to image
         end
@@ -178,10 +191,13 @@ classdef ImageStackViewer < handle
             end
             obj.Parent.Units = parentUnits;
             
+            obj.imageAxes.Position = [x y+15+margin w max(1,h-30-2*margin)];
             if obj.hasToolbar()
-                obj.imageAxes.Position = [x y+15+margin w max(1,h-45-2*margin)];
-            else
-                obj.imageAxes.Position = [x y+15+margin w max(1,h-30-2*margin)];
+                obj.imageAxes.Position(4) = obj.imageAxes.Position(4) - 15 - margin;
+            end
+            if ~isempty(obj.imageAxes.YLabel.String)
+                obj.imageAxes.Position(1) = obj.imageAxes.Position(1) + 15 + margin;
+                obj.imageAxes.Position(3) = obj.imageAxes.Position(3) - 15 - margin;
             end
             pos = ImageStackViewer.plotboxpos(obj.imageAxes);
             obj.frameSlider.Position = [pos(1) pos(2)-margin-15 pos(3) 15];
@@ -196,6 +212,13 @@ classdef ImageStackViewer < handle
                 delete(obj.resizeListener);
             end
             obj.resizeListener = addlistener(ancestor(obj.Parent, 'Figure'), 'SizeChanged', @obj.resize);
+        end
+        
+        function removeResizeListener(obj)
+            if ~isempty(obj.resizeListener) && isvalid(obj.resizeListener)
+                delete(obj.resizeListener);
+            end
+            obj.resizeListener = [];
         end
         
         function frameSliderMoved(obj, src, event)
@@ -218,7 +241,7 @@ classdef ImageStackViewer < handle
         
         function showFrame(obj, t)
             if ~exist('t', 'var')
-                t = max(1, min(obj.frameSlider.Value, obj.imageStack.numFrames()));
+                t = obj.getCurrentFrameIndex();
             end
             frame = obj.imageStack.getFrame(t);
             if isempty(frame)
