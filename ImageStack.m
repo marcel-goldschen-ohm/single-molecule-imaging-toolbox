@@ -26,6 +26,11 @@ classdef (ConstructOnLoad) ImageStack < handle
         % from filepath. [] => entire image
         % !!! only stored in case data needs to be reloaded from file
         viewport = [];
+        
+        % true  -> data is saved to file
+        % false -> data is NOT saved to file, i.e. to avoid duplicating
+        %          large image files
+        ownData = true;
     end
     
     methods
@@ -264,9 +269,19 @@ classdef (ConstructOnLoad) ImageStack < handle
             end
             if isfile(obj.filepath)
                 obj.load(obj.filepath, '', obj.frames, obj.viewport, false);
-            else
-                errordlg(['Invalid filepath: ' obj.filepath], 'Image Stack File Not Found');
+                return
             end
+            % look for file in pwd
+            [path, file, ext] = fileparts(obj.filepath);
+            filepath = fullfile(pwd(), [file ext]);
+            if isfile(filepath)
+                try
+                    obj.load(filepath, '', obj.frames, obj.viewport, false);
+                    return
+                catch
+                end
+            end
+            errordlg(['Invalid filepath: ' obj.filepath], 'Image Stack File Not Found');
         end
         
         function newobj = duplicate(obj, frames)
@@ -585,6 +600,18 @@ classdef (ConstructOnLoad) ImageStack < handle
             end
             newobj.data = mask;
             newobj.label = string(sprintf('%s Threshold %.1f', obj.label, threshold));
+        end
+        
+        function s = saveobj(obj)
+            props = fieldnames(obj);
+            for k = 1:numel(props)
+                prop = char(props{k});
+                if ~obj.ownData && (prop == "data")
+                    s.data = [];
+                else
+                    s.(prop) = obj.(prop);
+                end
+            end
         end
     end
     

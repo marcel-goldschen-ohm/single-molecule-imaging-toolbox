@@ -5,7 +5,9 @@ classdef Utilities < handle
     methods (Static)
         function obj = loadobj(obj, s)
             if isstruct(s)
-                for prop = fieldnames(obj)
+                props = fieldnames(obj);
+                for k = 1:numel(props)
+                    prop = char(props{k});
                     if isfield(s, prop)
                         try
                             if isstruct(obj.(prop))

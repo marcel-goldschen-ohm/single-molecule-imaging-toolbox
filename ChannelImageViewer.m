@@ -117,10 +117,6 @@ classdef ChannelImageViewer < ImageStackViewer
             end
         end
         
-        function selectImage(obj, idx)
-            obj.imageStack = obj.channel.images(idx);
-        end
-        
         function loadImage(obj, varargin)
             newImage = ImageStack;
             newImage.load('', '', [], [], true);
@@ -128,6 +124,15 @@ classdef ChannelImageViewer < ImageStackViewer
             obj.imageStack = newImage;
             [~, newImage.label, ~] = fileparts(newImage.filepath);
             obj.editImageInfo();
+        end
+        
+        function reloadImage(obj, varargin)
+            obj.imageStack.reload();
+            obj.imageStack = obj.imageStack;
+        end
+        
+        function selectImage(obj, idx)
+            obj.imageStack = obj.channel.images(idx);
         end
         
         function removeImage(obj, idx, ask)
@@ -158,6 +163,9 @@ classdef ChannelImageViewer < ImageStackViewer
             if isempty(obj.channel.images)
                 return
             end
+            
+            uimenu(menu, 'Label', 'Reload Image', ...
+                'Callback', @obj.reloadImage);
             
             nimages = numel(obj.channel.images);
             selectedImageIndex = obj.getSelectedImageIndex();

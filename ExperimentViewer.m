@@ -168,22 +168,48 @@ classdef ExperimentViewer < handle
         
         function addChannel(obj)
             obj.experiment.addChannel(Channel());
+            
+            civ = ChannelImageViewer(obj.Parent);
+            civ.channel = obj.experiment.channels(end);
+            civ.removeResizeListener();
+            obj.channelImageViewers = [obj.channelImageViewers civ];
+            
             obj.channelsListBox.Value = [obj.channelsListBox.Value numel(obj.experiment.channels)];
-            obj.experiment = obj.experiment;
+            obj.updateChannelsListBox();
+            
+            obj.showChannels();
         end
         
         function removeChannels(obj, idx)
             if ~exist('idx', 'var')
                 idx = obj.getVisibleChannelIndices();
             end
+            if isempty(idx)
+                return
+            end
+            selected = false(1, numel(obj.experiment.channels));
+            selected(obj.getVisibleChannelIndices()) = true;
+            selected(idx) = [];
+            
+            delete(obj.experiment.channels(idx));
             obj.experiment.channels(idx) = [];
-            obj.channelsListBox.Value = setdiff(obj.channelsListBox.Value, idx);
-            obj.experiment = obj.experiment;
+            
+            delete(obj.channelImageViewers(idx));
+            obj.channelImageViewers(idx) = [];
+            
+            obj.channelsListBox.Value = find(selected);
+            obj.updateChannelsListBox();
+            
+            obj.showChannels();
         end
         
         function updateChannelsListBox(obj)
-            obj.channelsListBox.String = cellstr(horzcat(obj.experiment.channels.label));
             nchannels = numel(obj.experiment.channels);
+            if nchannels
+                obj.channelsListBox.String = cellstr(horzcat(obj.experiment.channels.label));
+            else
+                obj.channelsListBox.String = {};
+            end
             obj.channelsListBox.Min = 0;
             obj.channelsListBox.Max = nchannels;
             idx = obj.channelsListBox.Value;
@@ -208,6 +234,68 @@ classdef ExperimentViewer < handle
             idx(idx > nchannels) = [];
             obj.channelsListBox.Value = unique(idx);
             obj.resize();
+        end
+        
+        function loadData(obj, filepath)
+            if ~exist('filepath', 'var') || isempty(filepath)
+                [file, path] = uigetfile('*.mat', 'Open data file.');
+                if isequal(file, 0)
+                    return
+                end
+                filepath = fullfile(path, file);
+            end
+            
+            wb = waitbar(0, 'Loading experiment from file...');
+            tmp = load(filepath);
+            close(wb);
+            obj.experiment = tmp.experiment;
+            fig = ancestor(obj.Parent, 'Figure');
+            fig.Name = strrep(file, '_', ' ');
+        end
+        
+        function saveData(obj, filepath, maxImageStackFrames)
+            if ~exist('filepath', 'var') || isempty(filepath)
+                [file, path] = uiputfile('*.mat', 'Save data to file.');
+                if isequal(file, 0)
+                    return
+                end
+                filepath = fullfile(path, file);
+            end
+            
+            % Do NOT save image stacks with frame count exceeding maxImageStackFrames.
+            if ~exist('maxImageStackFrames', 'var')
+                answer = inputdlg({'Only save image stack data when frame count <='}, 'Save Large Image Stacks?', 1, {'inf'});
+                if isempty(answer)
+                    return
+                end
+                maxImageStackFrames = str2num(answer{1});
+            end
+            for channel = obj.experiment.channels
+                for imstack = channel.images
+                    if imstack.numFrames() > maxImageStackFrames
+                        imstack.ownData = false;
+                    else
+                        imstack.ownData = true;
+                    end
+                end
+            end
+            
+            wb = waitbar(0, 'Saving experiment to file...');
+            experiment = obj.experiment;
+            save(filepath, 'experiment', '-v7.3');
+            close(wb);
+            fig = ancestor(obj.Parent, 'Figure');
+            fig.Name = strrep(file, '_', ' ');
+        end
+        
+        function loadAllMissingImageStacks(obj)
+            for channel = obj.experiment.channels
+                for imstack = channel.images
+                    if isempty(imstack.data)
+                        imstack.reload();
+                    end
+                end
+            end
         end
     end
 end
