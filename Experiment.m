@@ -1,4 +1,4 @@
-classdef (ConstructOnLoad) Experiment < handle
+classdef Experiment < handle
     %EXPERIMENT Data for an entire single-molecule imaging experiment.
     %   - Array of channels with associated image stacks and spots.
     %   - Aligned spots across all channels.

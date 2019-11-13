@@ -1,4 +1,4 @@
-classdef (ConstructOnLoad) Channel < handle
+classdef Channel < handle
     %CHANNEL Summary of this class goes here
     %   Detailed explanation goes here
     
