@@ -1,39 +1,30 @@
-classdef ImageStackViewer < handle
-    %IMAGESTACKVIEWER Image viewer with frame slider similar to ImageJ.
-    %   Auto-resizes to Parent container. Optionally specify Position
-    %   bounding box within Parent container.
-    %
-    %	Created by Marcel Goldschen-Ohm
-    %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
+classdef ChannelSpotProjectionViewer < handle
+    %CHANNELSPOTPROJECTIONVIEWER Summary of this class goes here
+    %   Detailed explanation goes here
     
     properties
-        % ImageStack handle ref to image stack data.
-        imageStack = ImageStack();
+        % Channel handle.
+        channel = Channel();
+        
+        selectedSpot = Spot.empty;
+        
+        selectedImageStack = ImageStack.empty;
         
         % Bounding box in which to arrange items within Parent.
         % [] => fill Parent container.
         Position = [];
         
-        % Image axes.
-        imageAxes = gobjects(0);
+        projAxes = gobjects(0);
+        projLine = gobjects(0);
+        idealLine = gobjects(0);
         
-        % Image graphics object for displaying a frame of the image stsack
-        % in imageAxes.
-        imageFrame = gobjects(0);
+        projHistAxes = gobjects(0);
+        projHistLine = gobjects(0);
+        projHistPatch = gobjects(0);
         
-        % Slider for changing the displayed image frame.
-        frameSlider = gobjects(0);
-        
-        % Text for displaying info about the image stack or cursor
-        % locaiton, etc.
         infoText = gobjects(0);
-        
-        leftHeaderButtons = gobjects(0);
-        
-        rightHeaderButtons = gobjects(0);
-        
-        % Optional toolbar panel.
-        toolbarPanel = gobjects(0);
+        menuButton = gobjects(0);
+        autoscaleButton = gobjects(0);
     end
     
     properties (Access = private)
@@ -48,13 +39,9 @@ classdef ImageStackViewer < handle
         Visible
     end
     
-%     events
-%         ZoomChange
-%     end
-    
     methods
-        function obj = ImageStackViewer(parent)
-            %IMAGESTACKVIEWER Construct an instance of this class
+        function obj = ChannelSpotProjectionViewer()
+            %CHANNELSPOTPROJECTIONVIEWER Construct an instance of this class
             %   Detailed explanation goes here
             
             % requires a parent graphics object
@@ -65,30 +52,38 @@ classdef ImageStackViewer < handle
                 addToolbarExplorationButtons(parent); % old style
             end
             
-            % image axes and image
-            obj.imageAxes = axes(parent, ...
-                'Units', 'pixels', ...
-                'XTick', [], 'YTick', [], ...
-                'YDir', 'reverse');
-            obj.imageAxes.Toolbar.Visible = 'off';
-            box(obj.imageAxes, 'on');
-            hold(obj.imageAxes, 'on');
-            obj.imageFrame = image(obj.imageAxes, [], ...
-                'HitTest', 'off', ...
-                'PickableParts', 'none');
-            axis(obj.imageAxes, 'image');
-            set(obj.imageAxes, 'ButtonDownFcn', @obj.imageAxesButtonDown);
+            obj.projAxes = axes(parent, 'Units', 'pixels', ...
+                'TickLength', [0.004 0.002]);
+            ax = obj.projAxes;
+            ax.Toolbar.Visible = 'off';
+            box(ax, 'on');
+            hold(ax, 'on');
+            obj.projLine = plot(ax, nan, nan, '-', ...
+                'HitTest', 'off', 'PickableParts', 'none');
+            obj.idealLine = plot(ax, nan, nan, '-', ...
+                'HitTest', 'off', 'PickableParts', 'none');
             
-            % frame slider
-            obj.frameSlider = uicontrol(parent, 'Style', 'slider', ...
-                'Min', 1, 'Max', 1, 'Value', 1, ...
-                'SliderStep', [1 1], ... % [1/nframes 1/nframes]
-                'Units', 'pixels');
-            addlistener(obj.frameSlider, 'Value', 'PostSet', @obj.frameSliderMoved);
+            obj.projHistAxes = axes(parent, 'Units', 'pixels', ...
+                'XTick', [], 'YTick', []);
+            ax = obj.projHistAxes;
+            ax.Toolbar.Visible = 'off';
+            box(ax, 'on');
+            hold(ax, 'on');
+            obj.projHistLine = plot(ax, nan, nan, '-', ...
+                'HitTest', 'off', 'PickableParts', 'none');
             
-            % info text
             obj.infoText = uicontrol(parent, 'Style', 'text', ...
                 'HorizontalAlignment', 'left');
+            
+            obj.menuButton = uicontrol(parent, 'style', 'pushbutton', ...
+                'String', '=', 'Position', [0 0 15 15], ...
+                'Callback', @(varargin) obj.menuButtonPushed());
+            
+            obj.autoscaleButton = uicontrol(parent, 'style', 'pushbutton', ...
+                'String', 'A', 'Position', [0 0 15 15], ...
+                'Callback', @(varargin) obj.autoscale());
+            
+            obj.selectedImageStack = ImageStack.empty;
             
             obj.resize();
             obj.updateResizeListener();
@@ -96,59 +91,69 @@ classdef ImageStackViewer < handle
         
         function delete(obj)
             h = [ ...
-                obj.imageAxes ...
-                obj.frameSlider ...
+                obj.projAxes ...
+                obj.projHistAxes ...
                 obj.infoText ...
-                obj.toolbarPanel ...
-                obj.leftHeaderButtons ...
-                obj.rightHeaderButtons ...
+                obj.menuButton ...
+                obj.autoscaleButton ...
                 ];
             delete(h(isgraphics(h)));
         end
         
+        function set.channel(obj, channel)
+            obj.channel = channel;
+            obj.projAxes.YLabel.String = channel.label;
+        end
+        
+        function set.selectedSpot(obj, spot)
+            obj.selectedSpot = spot;
+        end
+        
+        function set.selectedImageStack(obj, imstack)
+            obj.selectedImageStack = imstack;
+            if isempty(imstack)
+                obj.infoText.String = 'Stored Projection';
+            else
+                obj.infoText.String = imstack.getLabelWithSizeInfo();
+            end
+        end
+        
+        function setSelectedImageStack(obj, imstack)
+            obj.selectedImageStack = imstack;
+        end
+        
         function parent = get.Parent(obj)
-            parent = obj.imageAxes.Parent;
+            parent = obj.projAxes.Parent;
         end
         
         function set.Parent(obj, parent)
             % reparent and reposition all graphics objects
-            obj.imageAxes.Parent = parent;
-            obj.frameSlider.Parent = parent;
+            obj.projAxes.Parent = parent;
+            obj.projHistAxes.Parent = parent;
             obj.infoText.Parent = parent;
-            if ~isempty(obj.leftHeaderButtons)
-                [obj.leftHeaderButtons.Parent] = deal(parent);
-            end
-            if ~isempty(obj.rightHeaderButtons)
-                [obj.rightHeaderButtons.Parent] = deal(parent);
-            end
-            if isgraphics(obj.toolbarPanel)
-                obj.toolbarPanel.Parent = parent;
-            end
+            obj.menuButton.Parent = parent;
+            obj.autoscaleButton.Parent = parent;
             obj.resize();
             obj.updateResizeListener();
         end
         
         function visible = get.Visible(obj)
-            visible = obj.imageAxes.Visible;
+            visible = obj.projAxes.Visible;
         end
         
         function set.Visible(obj, visible)
             % reparent and reposition all graphics objects
-            obj.imageAxes.Visible = visible;
-            if ~isempty(obj.imageAxes.Children)
-                [obj.imageAxes.Children.Visible] = deal(visible);
+            obj.projAxes.Visible = visible;
+            if ~isempty(obj.projAxes.Children)
+                [obj.projAxes.Children.Visible] = deal(visible);
             end
-            obj.frameSlider.Visible = visible;
+            obj.projHistAxes.Visible = visible;
+            if ~isempty(obj.projHistAxes.Children)
+                [obj.projHistAxes.Children.Visible] = deal(visible);
+            end
             obj.infoText.Visible = visible;
-            if ~isempty(obj.leftHeaderButtons)
-                [obj.leftHeaderButtons.Visible] = deal(visible);
-            end
-            if ~isempty(obj.rightHeaderButtons)
-                [obj.rightHeaderButtons.Visible] = deal(visible);
-            end
-            if isgraphics(obj.toolbarPanel)
-                obj.toolbarPanel.Visible = visible;
-            end
+            obj.menuButton.Visible = visible;
+            obj.autoscaleButton.Visible = visible;
         end
         
         function set.Position(obj, position)
@@ -158,28 +163,7 @@ classdef ImageStackViewer < handle
             obj.resize();
         end
         
-        function set.imageStack(obj, imageStack)
-            % set handle to image stack data and update displayed image
-            zoomOut = isempty(obj.imageStack.data) || ~obj.isZoomed();
-            obj.imageStack = imageStack;
-            nframes = obj.imageStack.numFrames();
-            if nframes > 1
-                obj.frameSlider.Visible = 'on';
-                obj.frameSlider.Min = 1;
-                obj.frameSlider.Max = nframes;
-                obj.frameSlider.Value = max(1, min(obj.frameSlider.Value, nframes));
-                obj.frameSlider.SliderStep = [1./nframes 1./nframes];
-            else
-                obj.frameSlider.Visible = 'off';
-            end
-            obj.showFrame();
-            if zoomOut
-                obj.zoomOutFullImage();
-            end
-            obj.resize(); % reposition slider and info text relative to image
-        end
-        
-        function resize(obj, src, event)
+        function resize(obj, varargin)
             %RESIZE Reposition objects within Parent.
             
             margin = 2;
@@ -212,43 +196,17 @@ classdef ImageStackViewer < handle
             end
             obj.Parent.Units = parentUnits;
             
-            obj.imageAxes.Position = [x y+15+margin w max(1,h-30-2*margin)];
-            if isgraphics(obj.toolbarPanel)
-                obj.imageAxes.Position(4) = obj.imageAxes.Position(4) - 15 - margin;
+            tw = 50;
+            if ~isempty(obj.projAxes.YLabel.String)
+                tw = tw + 20;
             end
-            if ~isempty(obj.imageAxes.YLabel.String)
-                obj.imageAxes.Position(1) = obj.imageAxes.Position(1) + 15 + margin;
-                obj.imageAxes.Position(3) = obj.imageAxes.Position(3) - 15 - margin;
-            end
-            pos = ImageStackViewer.plotboxpos(obj.imageAxes);
-            obj.frameSlider.Position = [pos(1) pos(2)-margin-15 pos(3) 15];
-            wl = 0;
-            wr = 0;
-            if ~isempty(obj.leftHeaderButtons)
-                wl = margin + sum(horzcat(obj.leftHeaderButtons.Position(3)));
-            end
-            if ~isempty(obj.rightHeaderButtons)
-                wr = margin + sum(horzcat(obj.rightHeaderButtons.Position(3)));
-            end
-            obj.infoText.Position = [pos(1)+wl pos(2)+pos(4)+margin pos(3)-wl-wr 15];
-            if wl
-                bx = pos(1);
-                by = pos(2) + pos(4) + margin;
-                for btn = obj.leftHeaderButtons
-                    btn.Position = [bx by btn.Position(3) 15];
-                    bx = bx + btn.Position(3);
-                end
-            end
-            if wr
-                bx = pos(1) + pos(3) - wr + margin;
-                for btn = obj.rightHeaderButtons
-                    btn.Position = [bx by btn.Position(3) 15];
-                    bx = bx + btn.Position(3);
-                end
-            end
-            if isgraphics(obj.toolbarPanel)
-                obj.toolbarPanel.Position = [pos(1) pos(2)+pos(4)+margin+15 pos(3) 15];
-            end
+            obj.projAxes.Position = [x+tw y+20 w-tw-100-margin max(1,h-35-margin)];
+            obj.projHistAxes.Position = [x+w-100 y+20 100 max(1,h-35-margin)];
+            pos = ChannelSpotProjectionViewer.plotboxpos(obj.projAxes);
+            
+            obj.infoText.Position = [pos(1)+30 pos(2)+pos(4)+margin pos(3)-45-margin 15];
+            obj.menuButton.Position = [x y+h-15 15 15];
+            obj.autoscaleButton.Position = [x+w-100-margin-15 y+h-15 15 15];
         end
         
         function updateResizeListener(obj)
@@ -265,104 +223,32 @@ classdef ImageStackViewer < handle
             obj.resizeListener = [];
         end
         
-        function frameSliderMoved(obj, src, event)
-            %FRAMESLIDERMOVED Handle frame slider move event.
-            %   Update displayed image frame and frame info text.
-            t = uint32(round(obj.frameSlider.Value));
-            t = max(obj.frameSlider.Min, min(t, obj.frameSlider.Max));
-            obj.showFrame(t);
+        function menuButtonPushed(obj)
+            menu = obj.getActionsMenu();
+            menu.Position(1:2) = obj.menuButton.Position(1:2);
+            menu.Visible = 1;
         end
         
-        function t = getCurrentFrameIndex(obj)
-            t = 0;
-            nframes = obj.imageStack.numFrames();
-            if nframes == 1
-                t = 1;
-            elseif nframes > 1
-                t = max(1, min(obj.frameSlider.Value, nframes));
-            end
-        end
-        
-        function showFrame(obj, t)
-            if ~exist('t', 'var')
-                t = obj.getCurrentFrameIndex();
-            end
-            frame = obj.imageStack.getFrame(t);
-            if isempty(frame)
-                obj.imageFrame.CData = [];
-            elseif size(frame,3) == 1 % monochrome
-                I = imadjust(uint16(frame));
-                obj.imageFrame.CData = cat(3,I,I,I);
-            elseif size(frame,3) == 3 % assume RGB
-                obj.imageFrame.CData = imadjust(uint16(frame));
-            else
-                errordlg('Currently only handles grayscale or RGB images.', 'Image Format Error');
-            end
-            if isempty(obj.imageFrame.CData)
-                obj.imageFrame.XData = [];
-                obj.imageFrame.YData = [];
-            else
-                w = size(obj.imageFrame.CData,2);
-                h = size(obj.imageFrame.CData,1);
-                obj.imageFrame.XData = [1 w];
-                obj.imageFrame.YData = [1 h];
-                obj.frameSlider.Value = t;
-            end
-            obj.updateInfoText();
-        end
-        
-        function updateInfoText(obj)
-            if isempty(obj.imageFrame.CData)
-                obj.infoText.String = '';
-            else
-                w = size(obj.imageFrame.CData,2);
-                h = size(obj.imageFrame.CData,1);
-                nframes = obj.imageStack.numFrames();
-                if nframes > 1
-                    t = obj.frameSlider.Value;
-                    obj.infoText.String = sprintf('%d/%d (%dx%d)', t, nframes, w, h);
-                else
-                    obj.infoText.String = sprintf('(%dx%d)', w, h);
-                end
-                if ~isempty(obj.imageStack.label)
-                    obj.infoText.String = [obj.infoText.String ' ' char(obj.imageStack.label)];
+        function menu = getActionsMenu(obj)
+            fig = ancestor(obj.Parent, 'Figure');
+            menu = uicontextmenu(fig);
+            menu.Position(1:2) = get(fig, 'CurrentPoint');
+            
+            dataSourceMenu = uimenu(menu, 'Label', 'Data Source');
+            uimenu(dataSourceMenu, 'Label', 'Stored Projection', ...
+                'Checked', isempty(obj.selectedImageStack), ...
+                'Callback', @(varargin) obj.setSelectedImageStack(ImageStack.empty));
+            for i = 1:numel(obj.channel.images)
+                imstack = obj.channel.images(i);
+                if imstack.numFrames() > 1
+                    uimenu(dataSourceMenu, 'Label', imstack.getLabelWithSizeInfo(), ...
+                        'Checked', ~isempty(obj.selectedImageStack) && obj.selectedImageStack == imstack, ...
+                        'Callback', @(varargin) obj.setSelectedImageStack(imstack));
                 end
             end
         end
         
-        function tf = isZoomed(obj)
-            tf = ImageStackViewer.isAxesZoomed(obj.imageAxes);
-        end
-        
-        function zoomOutFullImage(obj)
-            if ~isempty(obj.imageFrame.CData)
-                obj.imageFrame.XData = [1 size(obj.imageFrame.CData,2)];
-                obj.imageFrame.YData = [1 size(obj.imageFrame.CData,1)];
-                obj.imageAxes.XLim = [0.5, obj.imageFrame.XData(end)+0.5];
-                obj.imageAxes.YLim = [0.5, obj.imageFrame.YData(end)+0.5];
-%                 notify(obj, 'ZoomChange');
-            end
-        end
-        
-        function imageAxesButtonDown(obj, src, event)
-            x = event.IntersectionPoint(1);
-            y = event.IntersectionPoint(2);
-            if event.Button == 1 % left
-                obj.leftClickInImage(x, y);
-            elseif event.Button == 2 % middle
-                obj.middleClickInImage(x, y);
-            elseif event.Button == 3 % right
-                obj.rightClickInImage(x, y);
-            end
-        end
-        
-        function leftClickInImage(obj, x, y)
-        end
-        
-        function middleClickInImage(obj, x, y)
-        end
-        
-        function rightClickInImage(obj, x, y)
+        function autoscale(obj)
         end
     end
     

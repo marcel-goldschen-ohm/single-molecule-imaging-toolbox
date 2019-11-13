@@ -12,8 +12,14 @@ classdef ChannelImageViewer < ImageStackViewer
         selectedSpot = Spot.empty;
         
         spotMarkers = gobjects(0);
-        
         selectedSpotMarker = gobjects(0);
+        
+        menuButton = gobjects(0);
+        zoomOutButton = gobjects(0);
+    end
+    
+    events
+        SelectedSpotChanged
     end
     
     methods
@@ -31,10 +37,23 @@ classdef ChannelImageViewer < ImageStackViewer
             
             obj@ImageStackViewer(parent);
             
+            obj.menuButton = uicontrol(parent, 'style', 'pushbutton', ...
+                'String', '=', 'Position', [0 0 15 15], ...
+                'Callback', @(varargin) obj.menuButtonPushed());
+            
+            obj.zoomOutButton = uicontrol(parent, 'style', 'pushbutton', ...
+                'String', 'A', 'Position', [0 0 15 15], ...
+                'Callback', @(varargin) obj.zoomOutFullImage());
+            
+            obj.leftHeaderButtons = obj.menuButton;
+            obj.rightHeaderButtons = obj.zoomOutButton;
+            
             obj.spotMarkers = scatter(obj.imageAxes, nan, nan, 'ro', ...
                 'HitTest', 'off', 'PickableParts', 'none');
             obj.selectedSpotMarker = scatter(obj.imageAxes, nan, nan, 'yo', ...
                 'HitTest', 'off', 'PickableParts', 'none');
+            
+            obj.resize();
         end
         
         function delete(obj)
@@ -57,99 +76,16 @@ classdef ChannelImageViewer < ImageStackViewer
             obj.updateSpotMarkers();
         end
         
-        function idx = getSelectedImageIndex(obj)
-            idx = 0;
-            for i = 1:numel(obj.channel.images)
-                if obj.imageStack == obj.channel.images(i)
-                    idx = i;
-                    return
-                end
-            end
-        end
-        
-        function leftClickInImage(obj, x, y)
-            spotIdx = obj.selectSpot(x, y);
-            if spotIdx
-                obj.selectedSpot = obj.channel.spots(spotIdx);
-            else
-                obj.selectedSpot = Spot;
-                obj.selectedSpot.xy = [x y];
-            end
+        function set.selectedSpot(obj, spot)
+            obj.selectedSpot = spot;
             obj.updateSelectedSpotMarker();
+            notify(obj, 'SelectedSpotChanged');
         end
         
-        function rightClickInImage(obj, x, y)
+        function menuButtonPushed(obj)
             menu = obj.getActionsMenu();
-            
-            spotIdx = obj.selectSpot(x, y);
-            if spotIdx
-                spotAction = uimenu(menu, 'Label', 'Remove Spot', ...
-                    'Callback', @(varargin) obj.removeSpot(spotIdx));
-            else
-                spotAction = uimenu(menu, 'Label', 'Add Spot', ...
-                    'Callback', @(varargin) obj.addSpot([x y]));
-            end
-            if numel(menu.Children) <= 2
-                spotAction.Separator = 1;
-            end
-            
+            menu.Position(1:2) = obj.menuButton.Position(1:2);
             menu.Visible = 1;
-        end
-        
-        function idx = selectSpot(obj, x, y)
-            idx = [];
-            if ~isempty(obj.channel.spots)
-                xy = vertcat(obj.channel.spots.xy);
-                nspots = numel(obj.channel.spots);
-                d = sqrt(sum((xy - repmat([x y], [nspots 1])).^2, 2));
-                [d, idx] = min(d);
-                ax = obj.imageAxes;
-                tmpUnits = ax.Units;
-                ax.Units = 'pixels';
-                pos = ax.Position;
-                ax.Units = tmpUnits;
-                dxdy = obj.channel.spots(idx).xy - [x y];
-                dxdypix = dxdy ./ [diff(ax.XLim) diff(ax.YLim)] .* pos(3:4);
-                dpix = sqrt(sum(dxdypix.^2));
-                if dpix > 5
-                    idx = [];
-                end
-            end
-        end
-        
-        function loadImage(obj, varargin)
-            newImage = ImageStack;
-            newImage.load('', '', [], [], true);
-            obj.channel.images = [obj.channel.images newImage];
-            obj.imageStack = newImage;
-            [~, newImage.label, ~] = fileparts(newImage.filepath);
-            obj.editImageInfo();
-        end
-        
-        function reloadImage(obj, varargin)
-            obj.imageStack.reload();
-            obj.imageStack = obj.imageStack;
-        end
-        
-        function selectImage(obj, idx)
-            obj.imageStack = obj.channel.images(idx);
-        end
-        
-        function removeImage(obj, idx, ask)
-            if exist('ask', 'var') && ask
-                if questdlg(['Remove image ' char(obj.channel.images(idx).label) '?'], ...
-                        'Remove image?', ...
-                        'OK', 'Cancel', 'Cancel') == "Cancel"
-                    return
-                end
-            end
-            delete(obj.channel.images(idx));
-            obj.channel.images(idx) = [];
-            if isempty(obj.channel.images)
-                obj.imageStack = ImageStack;
-            else
-                obj.imageStack = obj.channel.images(min(idx, numel(obj.channel.images)));
-            end
         end
         
         function menu = getActionsMenu(obj)
@@ -232,6 +168,101 @@ classdef ChannelImageViewer < ImageStackViewer
 %             end
             
             %menu.Visible = 1;
+        end
+        
+        function leftClickInImage(obj, x, y)
+            spotIdx = obj.selectSpot(x, y);
+            if spotIdx
+                obj.selectedSpot = obj.channel.spots(spotIdx);
+            else
+                clickSpot = Spot;
+                clickSpot.xy = [x y];
+                obj.selectedSpot = clickSpot;
+            end
+            obj.updateSelectedSpotMarker();
+        end
+        
+        function rightClickInImage(obj, x, y)
+            fig = ancestor(obj.Parent, 'Figure');
+            menu = uicontextmenu(fig);
+            menu.Position(1:2) = get(fig, 'CurrentPoint');
+            
+            spotIdx = obj.selectSpot(x, y);
+            if spotIdx
+                uimenu(menu, 'Label', 'Remove Spot', ...
+                    'Callback', @(varargin) obj.removeSpot(spotIdx));
+            else
+                uimenu(menu, 'Label', 'Add Spot', ...
+                    'Callback', @(varargin) obj.addSpot([x y]));
+            end
+            
+            menu.Visible = 1;
+        end
+        
+        function idx = selectSpot(obj, x, y)
+            idx = [];
+            if ~isempty(obj.channel.spots)
+                xy = vertcat(obj.channel.spots.xy);
+                nspots = numel(obj.channel.spots);
+                d = sqrt(sum((xy - repmat([x y], [nspots 1])).^2, 2));
+                [d, idx] = min(d);
+                ax = obj.imageAxes;
+                tmpUnits = ax.Units;
+                ax.Units = 'pixels';
+                pos = ax.Position;
+                ax.Units = tmpUnits;
+                dxdy = obj.channel.spots(idx).xy - [x y];
+                dxdypix = dxdy ./ [diff(ax.XLim) diff(ax.YLim)] .* pos(3:4);
+                dpix = sqrt(sum(dxdypix.^2));
+                if dpix > 5
+                    idx = [];
+                end
+            end
+        end
+        
+        function loadImage(obj, varargin)
+            newImage = ImageStack;
+            newImage.load('', '', [], [], true);
+            obj.channel.images = [obj.channel.images newImage];
+            obj.imageStack = newImage;
+            [~, newImage.label, ~] = fileparts(newImage.filepath);
+            obj.editImageInfo();
+        end
+        
+        function reloadImage(obj, varargin)
+            obj.imageStack.reload();
+            obj.imageStack = obj.imageStack;
+        end
+        
+        function selectImage(obj, idx)
+            obj.imageStack = obj.channel.images(idx);
+        end
+        
+        function idx = getSelectedImageIndex(obj)
+            idx = 0;
+            for i = 1:numel(obj.channel.images)
+                if obj.imageStack == obj.channel.images(i)
+                    idx = i;
+                    return
+                end
+            end
+        end
+        
+        function removeImage(obj, idx, ask)
+            if exist('ask', 'var') && ask
+                if questdlg(['Remove image ' char(obj.channel.images(idx).label) '?'], ...
+                        'Remove image?', ...
+                        'OK', 'Cancel', 'Cancel') == "Cancel"
+                    return
+                end
+            end
+            delete(obj.channel.images(idx));
+            obj.channel.images(idx) = [];
+            if isempty(obj.channel.images)
+                obj.imageStack = ImageStack;
+            else
+                obj.imageStack = obj.channel.images(min(idx, numel(obj.channel.images)));
+            end
         end
         
         function editImageInfo(obj, varargin)
@@ -397,8 +428,8 @@ classdef ChannelImageViewer < ImageStackViewer
             newSpot = Spot;
             newSpot.xy = xy;
             obj.channel.spots = [obj.channel.spots; newSpot];
-            obj.selectedSpot = newSpot;
             obj.updateSpotMarkers();
+            obj.selectedSpot = newSpot;
         end
         
         function removeSpot(obj, idx)
@@ -418,7 +449,6 @@ classdef ChannelImageViewer < ImageStackViewer
                 obj.spotMarkers.XData = xy(:,1);
                 obj.spotMarkers.YData = xy(:,2);
             end
-            obj.updateSelectedSpotMarker();
         end
         
         function updateSelectedSpotMarker(obj)

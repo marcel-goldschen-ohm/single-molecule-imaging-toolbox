@@ -1,4 +1,4 @@
-classdef (ConstructOnLoad) Spot < handle
+classdef Spot < handle
     %SPOT Summary of this class goes here
     %   Detailed explanation goes here
     %
@@ -18,11 +18,8 @@ classdef (ConstructOnLoad) Spot < handle
         % can be a comma-separated list of tags
         tag = "";
         
-        % spot image intensity z-projection
-        zproj = [];
-        
-        % idealization of z-projection
-        ideal = [];
+        % spot image intensity projection across time frames
+        tproj = SpotProjection();
     end
     
     methods

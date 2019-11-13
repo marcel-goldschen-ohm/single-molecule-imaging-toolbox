@@ -12,6 +12,7 @@ classdef ExperimentViewer < handle
         
         loadDataBtn = gobjects(0);
         saveDataBtn = gobjects(0);
+        refreshUiBtn = gobjects(0);
         
         channelsListHeaderText = gobjects(0);
         addChannelBtn = gobjects(0);
@@ -46,9 +47,11 @@ classdef ExperimentViewer < handle
             end
             
             obj.loadDataBtn = uicontrol(parent, 'Style', 'pushbutton', ...
-                'String', 'Load Data', 'Callback', @(varargin) obj.loadData());
+                'String', 'Load', 'Callback', @(varargin) obj.loadData());
             obj.saveDataBtn = uicontrol(parent, 'Style', 'pushbutton', ...
-                'String', 'Save Data', 'Callback', @(varargin) obj.saveData());
+                'String', 'Save', 'Callback', @(varargin) obj.saveData());
+            obj.refreshUiBtn = uicontrol(parent, 'Style', 'pushbutton', ...
+                'String', 'Refresh', 'Callback', @(varargin) obj.refreshUi());
             
             obj.channelsListHeaderText = uicontrol(parent, 'Style', 'text', ...
                 'String', 'Channels', 'HorizontalAlignment', 'left', ...
@@ -66,11 +69,14 @@ classdef ExperimentViewer < handle
             obj.showImagesAndOrProjectionsBtnGroup = uibuttongroup(parent, ...
                 'BorderType', 'none', 'Units', 'pixels');
             obj.showImagesBtn = uicontrol(obj.showImagesAndOrProjectionsBtnGroup, ...
-                'Style', 'togglebutton', 'String', 'Img', 'Value', 0);%, 'Callback', @(varargin) fun());
+                'Style', 'togglebutton', 'String', 'Img', 'Value', 0, ...
+                'Callback', @(varargin) obj.resize());
             obj.showProjectionsBtn = uicontrol(obj.showImagesAndOrProjectionsBtnGroup, ...
-                'Style', 'togglebutton', 'String', 'Proj', 'Value', 0);%, 'Callback', @(varargin) fun());
+                'Style', 'togglebutton', 'String', 'Proj', 'Value', 0, ...
+                'Callback', @(varargin) obj.resize());
             obj.showImagesAndProjectionsBtn = uicontrol(obj.showImagesAndOrProjectionsBtnGroup, ...
-                'Style', 'togglebutton', 'String', 'Img & Proj', 'Value', 1);%, 'Callback', @(varargin) fun());
+                'Style', 'togglebutton', 'String', 'Img & Proj', 'Value', 1, ...
+                'Callback', @(varargin) obj.resize());
             
             obj.resize();
             obj.updateResizeListener();
@@ -88,6 +94,7 @@ classdef ExperimentViewer < handle
             end
             obj.updateChannelsListBox();
             obj.showChannels();
+            linkaxes(horzcat(obj.channelImageViewers.imageAxes), 'xy');
         end
         
         function parent = get.Parent(obj)
@@ -124,8 +131,9 @@ classdef ExperimentViewer < handle
             wc = 150;
             lh = 15;
             y = y0 + h - lh;
-            obj.loadDataBtn.Position = [x0 y wc/2 lh];
-            obj.saveDataBtn.Position = [x0+wc/2 y wc/2 lh];
+            obj.loadDataBtn.Position = [x0 y wc/3 lh];
+            obj.saveDataBtn.Position = [x0+wc/3 y wc/3 lh];
+            obj.refreshUiBtn.Position = [x0+wc*2/3 y wc/3 lh];
             y = y - margin - lh;
             obj.channelsListHeaderText.Position = [x0 y wc-2*lh lh];
             obj.addChannelBtn.Position = [x0+wc-2*lh y lh lh];
@@ -149,11 +157,12 @@ classdef ExperimentViewer < handle
             if nvischannels > 0
                 x = x0 + wc + margin;
                 wc = w - x;
-                hc = floor((h - (nvischannels - 1) * margin) / nvischannels);
+                sep = margin;
+                hc = floor((h - (nvischannels - 1) * sep) / nvischannels);
                 y = y0 + h - hc;
                 for c = vischannels
                     obj.channelImageViewers(c).Position = [x y wc hc];
-                    y = y - margin - hc;
+                    y = y - sep - hc;
                 end
                 [obj.channelImageViewers(vischannels).Visible] = deal(1);
             end
@@ -173,6 +182,7 @@ classdef ExperimentViewer < handle
             civ.channel = obj.experiment.channels(end);
             civ.removeResizeListener();
             obj.channelImageViewers = [obj.channelImageViewers civ];
+            linkaxes(horzcat(obj.channelImageViewers.imageAxes), 'xy');
             
             obj.channelsListBox.Value = [obj.channelsListBox.Value numel(obj.experiment.channels)];
             obj.updateChannelsListBox();
@@ -296,6 +306,11 @@ classdef ExperimentViewer < handle
                     end
                 end
             end
+        end
+        
+        function refreshUi(obj)
+            obj.experiment = obj.experiment;
+            obj.resize();
         end
     end
 end
