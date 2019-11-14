@@ -18,16 +18,16 @@ classdef ChannelSpotProjectionViewer < handle
         projLine = gobjects(0);
         idealLine = gobjects(0);
         
-        projHistAxes = gobjects(0);
-        projHistLine = gobjects(0);
-        projHistPatch = gobjects(0);
+        histAxes = gobjects(0);
+        histLine = gobjects(0);
+        histPatch = gobjects(0);
         
         infoText = gobjects(0);
         menuButton = gobjects(0);
         autoscaleButton = gobjects(0);
-    end
-    
-    properties (Access = private)
+        
+        experimentViewer = ExperimentViewer.empty;
+        
         resizeListener = [];
     end
     
@@ -40,7 +40,7 @@ classdef ChannelSpotProjectionViewer < handle
     end
     
     methods
-        function obj = ChannelSpotProjectionViewer()
+        function obj = ChannelSpotProjectionViewer(parent)
             %CHANNELSPOTPROJECTIONVIEWER Construct an instance of this class
             %   Detailed explanation goes here
             
@@ -63,13 +63,13 @@ classdef ChannelSpotProjectionViewer < handle
             obj.idealLine = plot(ax, nan, nan, '-', ...
                 'HitTest', 'off', 'PickableParts', 'none');
             
-            obj.projHistAxes = axes(parent, 'Units', 'pixels', ...
+            obj.histAxes = axes(parent, 'Units', 'pixels', ...
                 'XTick', [], 'YTick', []);
-            ax = obj.projHistAxes;
+            ax = obj.histAxes;
             ax.Toolbar.Visible = 'off';
             box(ax, 'on');
             hold(ax, 'on');
-            obj.projHistLine = plot(ax, nan, nan, '-', ...
+            obj.histLine = plot(ax, nan, nan, '-', ...
                 'HitTest', 'off', 'PickableParts', 'none');
             
             obj.infoText = uicontrol(parent, 'Style', 'text', ...
@@ -92,7 +92,7 @@ classdef ChannelSpotProjectionViewer < handle
         function delete(obj)
             h = [ ...
                 obj.projAxes ...
-                obj.projHistAxes ...
+                obj.histAxes ...
                 obj.infoText ...
                 obj.menuButton ...
                 obj.autoscaleButton ...
@@ -129,7 +129,7 @@ classdef ChannelSpotProjectionViewer < handle
         function set.Parent(obj, parent)
             % reparent and reposition all graphics objects
             obj.projAxes.Parent = parent;
-            obj.projHistAxes.Parent = parent;
+            obj.histAxes.Parent = parent;
             obj.infoText.Parent = parent;
             obj.menuButton.Parent = parent;
             obj.autoscaleButton.Parent = parent;
@@ -147,9 +147,9 @@ classdef ChannelSpotProjectionViewer < handle
             if ~isempty(obj.projAxes.Children)
                 [obj.projAxes.Children.Visible] = deal(visible);
             end
-            obj.projHistAxes.Visible = visible;
-            if ~isempty(obj.projHistAxes.Children)
-                [obj.projHistAxes.Children.Visible] = deal(visible);
+            obj.histAxes.Visible = visible;
+            if ~isempty(obj.histAxes.Children)
+                [obj.histAxes.Children.Visible] = deal(visible);
             end
             obj.infoText.Visible = visible;
             obj.menuButton.Visible = visible;
@@ -197,11 +197,11 @@ classdef ChannelSpotProjectionViewer < handle
             obj.Parent.Units = parentUnits;
             
             tw = 50;
-            if ~isempty(obj.projAxes.YLabel.String)
-                tw = tw + 20;
-            end
+%             if ~isempty(obj.projAxes.YLabel.String)
+%                 tw = tw + 20;
+%             end
             obj.projAxes.Position = [x+tw y+20 w-tw-100-margin max(1,h-35-margin)];
-            obj.projHistAxes.Position = [x+w-100 y+20 100 max(1,h-35-margin)];
+            obj.histAxes.Position = [x+w-100 y+20 100 max(1,h-35-margin)];
             pos = ChannelSpotProjectionViewer.plotboxpos(obj.projAxes);
             
             obj.infoText.Position = [pos(1)+30 pos(2)+pos(4)+margin pos(3)-45-margin 15];

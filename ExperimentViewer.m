@@ -5,10 +5,9 @@ classdef ExperimentViewer < handle
     properties
         % Experiment handle.
         experiment = Experiment();
-    end
-    
-    properties (Access = private)
+        
         channelImageViewers = ChannelImageViewer.empty;
+        channelSpotProjectionViewers = ChannelSpotProjectionViewer.empty;
         
         loadDataBtn = gobjects(0);
         saveDataBtn = gobjects(0);
@@ -86,15 +85,23 @@ classdef ExperimentViewer < handle
             obj.experiment = experiment;
             nchannels = numel(experiment.channels);
             delete(obj.channelImageViewers);
+            delete(obj.channelSpotProjectionViewers);
             obj.channelImageViewers = ChannelImageViewer.empty;
+            obj.channelSpotProjectionViewers = ChannelSpotProjectionViewer.empty;
             for c = 1:nchannels
                 obj.channelImageViewers(c) = ChannelImageViewer(obj.Parent);
                 obj.channelImageViewers(c).channel = experiment.channels(c);
+                obj.channelImageViewers(c).experimentViewer = obj;
                 obj.channelImageViewers(c).removeResizeListener();
+                obj.channelSpotProjectionViewers(c) = ChannelSpotProjectionViewer(obj.Parent);
+                obj.channelSpotProjectionViewers(c).channel = experiment.channels(c);
+                obj.channelSpotProjectionViewers(c).experimentViewer = obj;
+                obj.channelSpotProjectionViewers(c).removeResizeListener();
             end
             obj.updateChannelsListBox();
             obj.showChannels();
             linkaxes(horzcat(obj.channelImageViewers.imageAxes), 'xy');
+            linkaxes(horzcat(obj.channelSpotProjectionViewers.projAxes), 'x');
         end
         
         function parent = get.Parent(obj)
@@ -108,6 +115,9 @@ classdef ExperimentViewer < handle
             obj.removeChannelsBtn.Parent = parent;
             obj.channelsListBox.Parent = parent;
             for viewer = obj.channelImageViewers
+                viewer.Parent = parent;
+            end
+            for viewer = obj.channelSpotProjectionViewers
                 viewer.Parent = parent;
             end
             obj.resize();
@@ -151,8 +161,17 @@ classdef ExperimentViewer < handle
             vischannels = obj.getVisibleChannelIndices();
             nvischannels = numel(vischannels);
             invischannels = setdiff(1:nchannels, vischannels);
+            showImages = obj.showImagesBtn.Value || obj.showImagesAndProjectionsBtn.Value;
+            showProjections = obj.showProjectionsBtn.Value || obj.showImagesAndProjectionsBtn.Value;
+            if ~showImages
+                [obj.channelImageViewers.Visible] = deal(0);
+            end
+            if ~showProjections
+                [obj.channelSpotProjectionViewers.Visible] = deal(0);
+            end
             if ~isempty(invischannels)
                 [obj.channelImageViewers(invischannels).Visible] = deal(0);
+                [obj.channelSpotProjectionViewers(invischannels).Visible] = deal(0);
             end
             if nvischannels > 0
                 x = x0 + wc + margin;
@@ -160,11 +179,34 @@ classdef ExperimentViewer < handle
                 sep = margin;
                 hc = floor((h - (nvischannels - 1) * sep) / nvischannels);
                 y = y0 + h - hc;
+                if showImages && showProjections
+                    whratio = 1; % width / height image ratio
+                    for c = vischannels
+                        imstack = obj.channelImageViewers(c).imageStack;
+                        ratio = imstack.width() / imstack.height();
+                        if ~isinf(ratio) && ratio > 0 && ratio > whratio
+                            whratio = ratio;
+                        end
+                    end
+                    wim = max(1, min(whratio * (hc - 30 - 2 * margin), wc / 2)) + 15;
+                end
                 for c = vischannels
-                    obj.channelImageViewers(c).Position = [x y wc hc];
+                    if showImages && showProjections
+                        obj.channelImageViewers(c).Position = [x y wim hc];
+                        obj.channelSpotProjectionViewers(c).Position = [x+wim+10 y wc-wim-10 hc];
+                    elseif showImages
+                        obj.channelImageViewers(c).Position = [x y wc hc];
+                    elseif showProjections
+                        obj.channelSpotProjectionViewers(c).Position = [x y wc hc];
+                    end
                     y = y - sep - hc;
                 end
-                [obj.channelImageViewers(vischannels).Visible] = deal(1);
+                if showImages
+                    [obj.channelImageViewers(vischannels).Visible] = deal(1);
+                end
+                if showProjections
+                    [obj.channelSpotProjectionViewers(vischannels).Visible] = deal(1);
+                end
             end
         end
         
@@ -178,11 +220,17 @@ classdef ExperimentViewer < handle
         function addChannel(obj)
             obj.experiment.addChannel(Channel());
             
-            civ = ChannelImageViewer(obj.Parent);
-            civ.channel = obj.experiment.channels(end);
-            civ.removeResizeListener();
-            obj.channelImageViewers = [obj.channelImageViewers civ];
+            viewer = ChannelImageViewer(obj.Parent);
+            viewer.channel = obj.experiment.channels(end);
+            viewer.removeResizeListener();
+            obj.channelImageViewers = [obj.channelImageViewers viewer];
             linkaxes(horzcat(obj.channelImageViewers.imageAxes), 'xy');
+            
+            viewer = ChannelSpotProjectionViewer(obj.Parent);
+            viewer.channel = obj.experiment.channels(end);
+            viewer.removeResizeListener();
+            obj.channelSpotProjectionViewers = [obj.channelSpotProjectionViewers viewer];
+            linkaxes(horzcat(obj.channelSpotProjectionViewers.projAxes), 'x');
             
             obj.channelsListBox.Value = [obj.channelsListBox.Value numel(obj.experiment.channels)];
             obj.updateChannelsListBox();
@@ -206,6 +254,9 @@ classdef ExperimentViewer < handle
             
             delete(obj.channelImageViewers(idx));
             obj.channelImageViewers(idx) = [];
+            
+            delete(obj.channelSpotProjectionViewers(idx));
+            obj.channelSpotProjectionViewers(idx) = [];
             
             obj.channelsListBox.Value = find(selected);
             obj.updateChannelsListBox();
@@ -259,6 +310,7 @@ classdef ExperimentViewer < handle
             tmp = load(filepath);
             close(wb);
             obj.experiment = tmp.experiment;
+            obj.resize();
             fig = ancestor(obj.Parent, 'Figure');
             fig.Name = strrep(file, '_', ' ');
         end

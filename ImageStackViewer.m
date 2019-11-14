@@ -34,9 +34,7 @@ classdef ImageStackViewer < handle
         
         % Optional toolbar panel.
         toolbarPanel = gobjects(0);
-    end
-    
-    properties (Access = private)
+        
         resizeListener = [];
     end
     
@@ -48,9 +46,9 @@ classdef ImageStackViewer < handle
         Visible
     end
     
-%     events
-%         ZoomChange
-%     end
+    events
+        ImageStackChanged
+    end
     
     methods
         function obj = ImageStackViewer(parent)
@@ -177,6 +175,7 @@ classdef ImageStackViewer < handle
                 obj.zoomOutFullImage();
             end
             obj.resize(); % reposition slider and info text relative to image
+            notify(obj, 'ImageStackChanged');
         end
         
         function resize(obj, src, event)

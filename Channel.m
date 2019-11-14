@@ -20,6 +20,9 @@ classdef Channel < handle
         
         % parent experiment handle
         experiment = Experiment.empty;
+        
+        % handle to selected image
+        selectedImage = ImageStack.empty;
     end
     
     methods
@@ -34,9 +37,41 @@ classdef Channel < handle
                 channels = setdiff(obj.experiment.channels, obj);
             end
         end
+        
+        function alignToChannel(obj, channel, method)
+            if ~isempty(channel) && ~isempty(channel.alignedToChannel) && channel.alignedToChannel == obj
+                warndlg({[char(channel.label) ' is already aligned to ' char(obj.label)], ...
+                    ['Aligning ' char(obj.label) ' to ' char(channel.label) ' would result in a cyclic alignment loop.'], ...
+                    'This is not allowed.'}, ...
+                    'Cyclic Alignment Attempt');
+                return
+            end
+            obj.alignedToChannel = channel;
+            obj.alignment = ImageRegistration;
+            if isempty(channel)
+                return
+            end
+            if ~exist('method', 'var') || isempty(method)
+                methods = {'images', 'spots', 'identical'};
+                [idx, tf] = listdlg('PromptString', 'Alignment Method',...
+                    'SelectionMode', 'single', ...
+                    'ListString', methods);
+                if ~tf
+                    return
+                end
+                method = methods{idx};
+            end
+            if method == "images"
+                disp('align images');
+            elseif method == "spots"
+                disp('align spots');
+            elseif method == "identical"
+                obj.alignment = ImageRegistration;
+            end
+        end
     end
     
-    methods (Static)
+    methods(Static)
         function obj = loadobj(s)
             obj = Utilities.loadobj(Channel(), s);
         end

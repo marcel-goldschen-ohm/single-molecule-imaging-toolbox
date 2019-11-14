@@ -16,6 +16,13 @@ classdef ChannelImageViewer < ImageStackViewer
         
         menuButton = gobjects(0);
         zoomOutButton = gobjects(0);
+        
+        overlayChannel = Channel.empty;
+        overlayMode = '';
+        
+        experimentViewer = ExperimentViewer.empty;
+        
+        imageStackChangedListener = [];
     end
     
     events
@@ -48,10 +55,13 @@ classdef ChannelImageViewer < ImageStackViewer
             obj.leftHeaderButtons = obj.menuButton;
             obj.rightHeaderButtons = obj.zoomOutButton;
             
-            obj.spotMarkers = scatter(obj.imageAxes, nan, nan, 'ro', ...
+            obj.spotMarkers = scatter(obj.imageAxes, nan, nan, 'mo', ...
                 'HitTest', 'off', 'PickableParts', 'none');
-            obj.selectedSpotMarker = scatter(obj.imageAxes, nan, nan, 'yo', ...
+            obj.selectedSpotMarker = scatter(obj.imageAxes, nan, nan, 'co', ...
                 'HitTest', 'off', 'PickableParts', 'none');
+            
+            obj.imageStackChangedListener = ...
+                addlistener(obj, 'ImageStackChanged', @(varargin) obj.onImageStackChanged());
             
             obj.resize();
         end
@@ -69,7 +79,11 @@ classdef ChannelImageViewer < ImageStackViewer
             obj.channel = channel;
             obj.imageAxes.YLabel.String = channel.label;
             if ~isempty(channel.images)
-                obj.imageStack = channel.images(1);
+                if ~isempty(channel.selectedImage) && any(channel.images == channel.selectedImage)
+                    obj.imageStack = channel.selectedImage;
+                else
+                    obj.imageStack = channel.images(1);
+                end
             else
                 obj.imageStack = ImageStack();
             end
@@ -82,18 +96,35 @@ classdef ChannelImageViewer < ImageStackViewer
             notify(obj, 'SelectedSpotChanged');
         end
         
+        function onImageStackChanged(obj)
+            if any(obj.channel.images == obj.imageStack)
+                obj.channel.selectedImage = obj.imageStack;
+                disp(obj.channel.selectedImage.label);
+            else
+                obj.channel.selectedImage = ImageStack.empty;
+            end
+        end
+        
         function menuButtonPushed(obj)
             menu = obj.getActionsMenu();
+            fig = ancestor(obj.Parent, 'Figure');
+            menu.Parent = fig;
             menu.Position(1:2) = obj.menuButton.Position(1:2);
             menu.Visible = 1;
         end
         
         function menu = getActionsMenu(obj)
-            fig = ancestor(obj.Parent, 'Figure');
-            menu = uicontextmenu(fig);
-            menu.Position(1:2) = get(fig, 'CurrentPoint');
+            menu = uicontextmenu;
+            
+            if isempty(obj.channel)
+                return
+            end
+            
+            uimenu(menu, 'Label', 'Rename Channel', ...
+                'Callback', @obj.renameChannel);
             
             uimenu(menu, 'Label', 'Load Image', ...
+                'Separator', 'on', ...
                 'Callback', @obj.loadImage);
             
             if isempty(obj.channel.images)
@@ -114,14 +145,28 @@ classdef ChannelImageViewer < ImageStackViewer
                 end
             end
             
-            uimenu(menu, 'Label', 'Edit Image Info', ...
-                'Callback', @obj.editImageInfo);
+            uimenu(menu, 'Label', 'Rename Image', ...
+                'Callback', @obj.renameImage);
             
             removeImageMenu = uimenu(menu, 'Label', 'Remove Image');
             for i = 1:nimages
                 uimenu(removeImageMenu, 'Label', obj.channel.images(i).getLabelWithSizeInfo(), ...
                     'Checked', i == selectedImageIndex, ...
                     'Callback', @(varargin) obj.removeImage(i, true));
+            end
+            
+            otherChannels = obj.channel.getOtherChannelsInExperiment();
+            if ~isempty(otherChannels)
+                overlayMenu = uimenu(menu, 'Label', 'Overlay Channel', ...
+                    'Separator', 'on');
+                uimenu(overlayMenu, 'Label', 'None', ...
+                    'Checked', isempty(obj.overlayChannel), ...
+                    'Callback', @(varargin) obj.setOverlayChannel(Channel.empty));
+                for channel = otherChannels
+                    uimenu(overlayMenu, 'Label', channel.label, ...
+                        'Checked', ~isempty(obj.overlayChannel) && (obj.overlayChannel == channel), ...
+                        'Callback', @(varargin) obj.setOverlayChannel(channel));
+                end
             end
             
             uimenu(menu, 'Label', 'Autoscale', ...
@@ -145,29 +190,25 @@ classdef ChannelImageViewer < ImageStackViewer
             uimenu(menu, 'Label', 'Threshold', ...
                 'Callback', @(varargin) obj.threshold());
             
+            if ~isempty(otherChannels)
+                alignToMenu = uimenu(menu, 'Label', 'Align To Channel', ...
+                    'Separator', 'on');
+                uimenu(alignToMenu, 'Label', 'None', ...
+                    'Checked', isempty(obj.channel.alignedToChannel), ...
+                    'Callback', @(varargin) obj.alignToChannel(Channel.empty));
+                for channel = otherChannels
+                    uimenu(alignToMenu, 'Label', channel.label, ...
+                        'Checked', ~isempty(obj.channel.alignedToChannel) && (obj.channel.alignedToChannel == channel), ...
+                        'Callback', @(varargin) obj.alignToChannel(channel));
+                end
+            end
+            
             uimenu(menu, 'Label', 'Find Spots', ...
                 'Separator', 'on', ...
                 'Callback', @(varargin) obj.findSpots());
             
             uimenu(menu, 'Label', 'Clear Spots', ...
                 'Callback', @(varargin) obj.clearSpots());
-            
-%             otherChannels = obj.getOtherChannelsInExperiment();
-%             if ~isempty(otherChannels)
-%                 alignToMenu = uimenu(menu, 'Label', 'Align To', ...
-%                     'Separator', 'on');
-%                 for channel = otherChannels
-%                     alignToChannelMenu = uimenu(alignToMenu, 'Label', channel.label);
-%                     uimenu(alignToChannelMenu, 'Label', 'Align Images', ...
-%                 'Callback', @(varargin) obj.alignImagesTo(channel));
-%                     uimenu(alignToChannelMenu, 'Label', 'Align Spots', ...
-%                 'Callback', @(varargin) obj.alignSpotsTo(channel));
-%                     uimenu(alignToChannelMenu, 'Label', 'Identical', ...
-%                 'Callback', @(varargin) obj.alignIdenticalTo(channel)));
-%                 end
-%             end
-            
-            %menu.Visible = 1;
         end
         
         function leftClickInImage(obj, x, y)
@@ -183,16 +224,19 @@ classdef ChannelImageViewer < ImageStackViewer
         end
         
         function rightClickInImage(obj, x, y)
+            menu = obj.getActionsMenu();
             fig = ancestor(obj.Parent, 'Figure');
-            menu = uicontextmenu(fig);
+            menu.Parent = fig;
             menu.Position(1:2) = get(fig, 'CurrentPoint');
             
             spotIdx = obj.selectSpot(x, y);
             if spotIdx
                 uimenu(menu, 'Label', 'Remove Spot', ...
+                    'Separator', 'on', ...
                     'Callback', @(varargin) obj.removeSpot(spotIdx));
             else
                 uimenu(menu, 'Label', 'Add Spot', ...
+                    'Separator', 'on', ...
                     'Callback', @(varargin) obj.addSpot([x y]));
             end
             
@@ -217,6 +261,25 @@ classdef ChannelImageViewer < ImageStackViewer
                 if dpix > 5
                     idx = [];
                 end
+            end
+        end
+        
+        function renameChannel(obj, varargin)
+            if isempty(obj.channel)
+                return
+            end
+            answer = inputdlg( ...
+                {'label'}, ...
+                'Channel Label', 1, ...
+                {char(obj.channel.label)});
+            if isempty(answer)
+                return
+            end
+            obj.channel.label = string(answer{1});
+            obj.imageAxes.YLabel.String = obj.channel.label;
+            obj.resize();
+            if ~isempty(obj.experimentViewer)
+                obj.experimentViewer.refreshUi();
             end
         end
         
@@ -265,13 +328,13 @@ classdef ChannelImageViewer < ImageStackViewer
             end
         end
         
-        function editImageInfo(obj, varargin)
+        function renameImage(obj, varargin)
             if ~obj.getSelectedImageIndex()
                 return
             end
             answer = inputdlg( ...
                 {'label'}, ...
-                'Image Info', 1, ...
+                'Image Label', 1, ...
                 {char(obj.imageStack.label)});
             if isempty(answer)
                 return
@@ -461,18 +524,14 @@ classdef ChannelImageViewer < ImageStackViewer
             end
         end
         
-%         function alignImagesTo(obj, channel)
-%         end
-%         
-%         function alignSpotsTo(obj, channel)
-%             errordlg('Aligning spots is not yet implemented. Check back soon.', 'COMING SOON');
-%         end
-%         
-%         function alignIdenticalTo(obj, channel)
-%             obj.channel.alignToChannel = channel;
-%             obj.channel.alignment = ImageRegistration;
-%             obj.channel.alignment.transformation = affine2d();
-%         end
+        function setOverlayChannel(obj, channel)
+            obj.overlayChannel = channel;
+            ... % TODO: redraw with overlay
+        end
+        
+        function alignToChannel(obj, channel)
+            obj.channel.alignToChannel(channel);
+        end
     end
 end
 
