@@ -36,6 +36,9 @@ classdef ImageStackViewer < handle
         toolbarPanel = gobjects(0);
         
         resizeListener = [];
+        
+        overlayImageStackViewer = ImageStackViewer.empty;
+        overlayColorChannels = 'green-magenta';
     end
     
     properties (Dependent)
@@ -48,6 +51,7 @@ classdef ImageStackViewer < handle
     
     events
         ImageStackChanged
+        FrameChanged
     end
     
     methods
@@ -178,6 +182,20 @@ classdef ImageStackViewer < handle
             notify(obj, 'ImageStackChanged');
         end
         
+        function set.overlayImageStackViewer(obj, viewer)
+            obj.overlayImageStackViewer = viewer;
+            obj.showFrame();
+        end
+        
+        function set.overlayColorChannels(obj, colors)
+            obj.overlayColorChannels = colors;
+            obj.showFrame();
+        end
+        
+        function setOverlayColorChannels(obj, colors)
+            obj.overlayColorChannels = colors;
+        end
+        
         function resize(obj, src, event)
             %RESIZE Reposition objects within Parent.
             
@@ -282,16 +300,42 @@ classdef ImageStackViewer < handle
             end
         end
         
+        function frame = getFrameData(obj, t)
+            if ~exist('t', 'var') || isempty(t)
+                t = getCurrentFrameIndex(obj);
+            end
+            frame = obj.imageStack.getFrameData(t);
+        end
+        
         function showFrame(obj, t)
             if ~exist('t', 'var')
                 t = obj.getCurrentFrameIndex();
             end
-            frame = obj.imageStack.getFrame(t);
+            frame = obj.imageStack.getFrameData(t);
             if isempty(frame)
                 obj.imageFrame.CData = [];
             elseif size(frame,3) == 1 % monochrome
                 I = imadjust(uint16(frame));
-                obj.imageFrame.CData = cat(3,I,I,I);
+                if isempty(obj.overlayImageStackViewer)
+                    obj.imageFrame.CData = cat(3,I,I,I);
+                else
+                    try
+                        I2 = obj.overlayImageStackViewer.getFrameData();
+                        if size(I2,3) ~= 1
+                            throw MException('', '');
+                        end
+                        I2 = imadjust(uint16(I2));
+                        % align I2 -> I
+%                         if ~isempty(data.channelAlignments(c2,c).transformation)
+%                             I2 =  imwarp(I2, data.channelAlignments(c2,c).transformation, 'OutputView', imref2d(size(I)));
+%                         elseif ~isempty(data.channelAlignments(c,c2).transformation)
+%                             I2 = imwarp(I2, invert(data.channelAlignments(c,c2).transformation), 'OutputView', imref2d(size(I)));
+%                         end
+                        obj.imageFrame.CData = imfuse(I, I2, 'ColorChannels', obj.overlayColorChannels);
+                    catch
+                        obj.imageFrame.CData = cat(3,I,I,I);
+                    end
+                end
             elseif size(frame,3) == 3 % assume RGB
                 obj.imageFrame.CData = imadjust(uint16(frame));
             else
@@ -308,6 +352,7 @@ classdef ImageStackViewer < handle
                 obj.frameSlider.Value = t;
             end
             obj.updateInfoText();
+            notify(obj, 'FrameChanged');
         end
         
         function updateInfoText(obj)

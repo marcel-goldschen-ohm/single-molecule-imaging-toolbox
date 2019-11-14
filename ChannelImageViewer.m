@@ -17,12 +17,10 @@ classdef ChannelImageViewer < ImageStackViewer
         menuButton = gobjects(0);
         zoomOutButton = gobjects(0);
         
-        overlayChannel = Channel.empty;
-        overlayMode = '';
-        
         experimentViewer = ExperimentViewer.empty;
         
         imageStackChangedListener = [];
+        frameChangedListener = [];
     end
     
     events
@@ -59,9 +57,12 @@ classdef ChannelImageViewer < ImageStackViewer
                 'HitTest', 'off', 'PickableParts', 'none');
             obj.selectedSpotMarker = scatter(obj.imageAxes, nan, nan, 'co', ...
                 'HitTest', 'off', 'PickableParts', 'none');
+            obj.selectedSpotMarker.MarkerHandle.LineWidth = 2;
             
             obj.imageStackChangedListener = ...
                 addlistener(obj, 'ImageStackChanged', @(varargin) obj.onImageStackChanged());
+            obj.frameChangedListener = ...
+                addlistener(obj, 'FrameChanged', @(varargin) obj.onFrameChanged());
             
             obj.resize();
         end
@@ -99,9 +100,19 @@ classdef ChannelImageViewer < ImageStackViewer
         function onImageStackChanged(obj)
             if any(obj.channel.images == obj.imageStack)
                 obj.channel.selectedImage = obj.imageStack;
-                disp(obj.channel.selectedImage.label);
             else
                 obj.channel.selectedImage = ImageStack.empty;
+            end
+        end
+        
+        function onFrameChanged(obj)
+            if ~isempty(obj.experimentViewer)
+                otherChannelImageViewers = setdiff(obj.experimentViewer.channelImageViewers, obj);
+                for viewer = otherChannelImageViewers
+                    if ~isempty(viewer.overlayImageStackViewer) && viewer.overlayImageStackViewer == obj
+                        viewer.showFrame();
+                    end
+                end
             end
         end
         
@@ -160,13 +171,38 @@ classdef ChannelImageViewer < ImageStackViewer
                 overlayMenu = uimenu(menu, 'Label', 'Overlay Channel', ...
                     'Separator', 'on');
                 uimenu(overlayMenu, 'Label', 'None', ...
-                    'Checked', isempty(obj.overlayChannel), ...
+                    'Checked', isempty(obj.overlayImageStackViewer), ...
                     'Callback', @(varargin) obj.setOverlayChannel(Channel.empty));
                 for channel = otherChannels
                     uimenu(overlayMenu, 'Label', channel.label, ...
-                        'Checked', ~isempty(obj.overlayChannel) && (obj.overlayChannel == channel), ...
+                        'Checked', ~isempty(obj.overlayImageStackViewer) ...
+                        && (obj.overlayImageStackViewer.channel == channel), ...
                         'Callback', @(varargin) obj.setOverlayChannel(channel));
                 end
+                overlayColorsMenu = uimenu(overlayMenu, 'Label', 'Overlay Colors', ...
+                    'Separator', 'on');
+                uimenu(overlayColorsMenu, 'Label', 'green-magenta', ...
+                    'Checked', (~isnumeric(obj.overlayColorChannels) ...
+                    && obj.overlayColorChannels == "green-magenta") ...
+                    || isequal(obj.overlayColorChannels, [2 1 2]), ...
+                    'Callback', @(varargin) obj.setOverlayColorChannels('green-magenta'));
+                uimenu(overlayColorsMenu, 'Label', 'magenta-green', ...
+                    'Checked', isequal(obj.overlayColorChannels, [1 2 1]), ...
+                    'Callback', @(varargin) obj.setOverlayColorChannels([1 2 1]));
+                uimenu(overlayColorsMenu, 'Label', 'red-cyan', ...
+                    'Checked', (~isnumeric(obj.overlayColorChannels) ...
+                    && obj.overlayColorChannels == "red-cyan") ...
+                    || isequal(obj.overlayColorChannels, [1 2 2]), ...
+                    'Callback', @(varargin) obj.setOverlayColorChannels('red-cyan'));
+                uimenu(overlayColorsMenu, 'Label', 'cyan-red', ...
+                    'Checked', isequal(obj.overlayColorChannels, [2 1 1]), ...
+                    'Callback', @(varargin) obj.setOverlayColorChannels([2 1 1]));
+                uimenu(overlayColorsMenu, 'Label', 'green-red', ...
+                    'Checked', isequal(obj.overlayColorChannels, [2 1 0]), ...
+                    'Callback', @(varargin) obj.setOverlayColorChannels([2 1 0]));
+                uimenu(overlayColorsMenu, 'Label', 'red-green', ...
+                    'Checked', isequal(obj.overlayColorChannels, [1 2 0]), ...
+                    'Callback', @(varargin) obj.setOverlayColorChannels([1 2 0]));
             end
             
             uimenu(menu, 'Label', 'Autoscale', ...
@@ -525,8 +561,14 @@ classdef ChannelImageViewer < ImageStackViewer
         end
         
         function setOverlayChannel(obj, channel)
-            obj.overlayChannel = channel;
-            ... % TODO: redraw with overlay
+            if ~isempty(channel) && ~isempty(obj.experimentViewer)
+                c = find(obj.experimentViewer.experiment.channels == channel);
+                if ~isempty(c)
+                    obj.overlayImageStackViewer = obj.experimentViewer.channelImageViewers(c);
+                    return
+                end
+            end
+            obj.overlayImageStackViewer = ChannelImageViewer.empty;
         end
         
         function alignToChannel(obj, channel)

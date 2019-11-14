@@ -62,9 +62,9 @@ classdef Channel < handle
                 method = methods{idx};
             end
             if method == "images"
-                disp('align images');
+                disp('align images'); % TODO
             elseif method == "spots"
-                disp('align spots');
+                disp('align spots'); % TODO
             elseif method == "identical"
                 obj.alignment = ImageRegistration;
             end

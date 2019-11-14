@@ -58,7 +58,7 @@ classdef (ConstructOnLoad) ImageStack < handle
             nframes = size(obj.data,4);
         end
         
-        function frame = getFrame(obj, t)
+        function frame = getFrameData(obj, t)
             %FRAME Return the pixel data for a single image frame
             frame = obj.data(:,:,:,t);
         end
@@ -479,7 +479,7 @@ classdef (ConstructOnLoad) ImageStack < handle
             if ~exist('previewImage', 'var')
                 previewImage = gobjects(0);
             end
-            im = obj.getFrame(frame);
+            im = obj.getFrameData(frame);
             [im, sigma] = ImageOps.gaussFilterPreview(im, sigma, previewImage);
             if isempty(im)
                 return
@@ -535,7 +535,7 @@ classdef (ConstructOnLoad) ImageStack < handle
             if ~exist('previewImage', 'var')
                 previewImage = gobjects(0);
             end
-            im = obj.getFrame(frame);
+            im = obj.getFrameData(frame);
             [im, diskRadius] = ImageOps.tophatFilterPreview(im, diskRadius, previewImage);
             if isempty(im)
                 return
@@ -593,7 +593,7 @@ classdef (ConstructOnLoad) ImageStack < handle
             if ~exist('previewImage', 'var')
                 previewImage = gobjects(0);
             end
-            im = obj.getFrame(frame);
+            im = obj.getFrameData(frame);
             [mask, threshold] = ImageOps.thresholdPreview(im, threshold, previewImage);
             if isempty(mask)
                 return
