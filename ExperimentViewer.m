@@ -312,6 +312,7 @@ classdef ExperimentViewer < handle
             obj.experiment = tmp.experiment;
             obj.resize();
             fig = ancestor(obj.Parent, 'Figure');
+            [path, file, ext] = fileparts(filepath);
             fig.Name = strrep(file, '_', ' ');
         end
         
@@ -347,6 +348,7 @@ classdef ExperimentViewer < handle
             save(filepath, 'experiment', '-v7.3');
             close(wb);
             fig = ancestor(obj.Parent, 'Figure');
+            [path, file, ext] = fileparts(filepath);
             fig.Name = strrep(file, '_', ' ');
         end
         
