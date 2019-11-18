@@ -265,6 +265,7 @@ classdef (ConstructOnLoad) ImageStack < handle
             %   Only load subimage slices as defined by obj.frames and
             %   obj.viewport
             if isempty(obj.filepath)
+                obj.load('', '', obj.frames, obj.viewport, false);
                 return
             end
             if isfile(obj.filepath)
@@ -281,7 +282,7 @@ classdef (ConstructOnLoad) ImageStack < handle
                 catch
                 end
             end
-            errordlg(['Invalid filepath: ' obj.filepath], 'Image Stack File Not Found');
+            obj.load('', '', obj.frames, obj.viewport, false);
         end
         
         function newobj = duplicate(obj, frames)
@@ -493,7 +494,7 @@ classdef (ConstructOnLoad) ImageStack < handle
                 if ~exist('applyToAllFrames', 'var') || isempty(applyToAllFrames)
                     applyToAllFrames = questdlg('Apply Gaussian filter to all frames in stack?', ...
                         'Filter entire image stack?', ...
-                        'OK', 'Cancel', 'Cancel') == "Cancel";
+                        'OK', 'Cancel', 'Cancel') == "OK";
                 end
                 if applyToAllFrames
                     wb = waitbar(0, 'Filtering stack...');
@@ -550,7 +551,7 @@ classdef (ConstructOnLoad) ImageStack < handle
                 if ~exist('applyToAllFrames', 'var') || isempty(applyToAllFrames)
                     applyToAllFrames = questdlg('Apply tophat filter to all frames in stack?', ...
                         'Filter entire image stack?', ...
-                        'OK', 'Cancel', 'Cancel') == "Cancel";
+                        'OK', 'Cancel', 'Cancel') == "OK";
                 end
                 if applyToAllFrames
                     wb = waitbar(0, 'Filtering stack...');
