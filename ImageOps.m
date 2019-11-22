@@ -1,5 +1,8 @@
 classdef ImageOps < handle
-    %IMAGEOPS Collection of image operations
+    %IMAGEOPS Collection of image operations.
+    %
+    %	Created by Marcel Goldschen-Ohm
+    %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
     
     methods(Static)
         function [filteredim, sigma] = gaussFilterPreview(im, sigma, previewImage)

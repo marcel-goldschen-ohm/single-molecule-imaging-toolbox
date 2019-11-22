@@ -50,7 +50,7 @@ classdef ExperimentViewer < handle
             obj.saveDataBtn = uicontrol(parent, 'Style', 'pushbutton', ...
                 'String', 'Save', 'Callback', @(varargin) obj.saveData());
             obj.refreshUiBtn = uicontrol(parent, 'Style', 'pushbutton', ...
-                'String', 'Refresh', 'Callback', @(varargin) obj.refreshUi());
+                'String', char(hex2dec('27f3')), 'Callback', @(varargin) obj.refreshUi());
             
             obj.channelsListHeaderText = uicontrol(parent, 'Style', 'text', ...
                 'String', 'Channels', 'HorizontalAlignment', 'left', ...
@@ -148,8 +148,8 @@ classdef ExperimentViewer < handle
             obj.channelsListHeaderText.Position = [x0 y wc-2*lh lh];
             obj.addChannelBtn.Position = [x0+wc-2*lh y lh lh];
             obj.removeChannelsBtn.Position = [x0+wc-lh y lh lh];
-            y = y - 75;
-            obj.channelsListBox.Position = [x0 y wc 75];
+            y = y - 100;
+            obj.channelsListBox.Position = [x0 y wc 100];
             y = y - margin - lh;
             obj.showImagesAndOrProjectionsBtnGroup.Position = [x0 y wc lh];
             obj.showImagesBtn.Position = [0 0 .3*wc lh];
@@ -198,6 +198,9 @@ classdef ExperimentViewer < handle
                         obj.channelImageViewers(c).Position = [x y wc hc];
                     elseif showProjections
                         obj.channelSpotProjectionViewers(c).Position = [x y wc hc];
+                    end
+                    if showImages
+                        obj.channelImageViewers(c).showFrame();
                     end
                     y = y - sep - hc;
                 end
@@ -294,6 +297,9 @@ classdef ExperimentViewer < handle
             idx(idx < 1) = [];
             idx(idx > nchannels) = [];
             obj.channelsListBox.Value = unique(idx);
+            for c = 1:nchannels
+                obj.channelImageViewers(c).refresh();
+            end
             obj.resize();
         end
         

@@ -14,54 +14,60 @@ classdef ImageStackViewer < handle
         % [] => fill Parent container.
         Position = [];
         
-        % Image axes.
+        % Image axes. Created in constructor.
         imageAxes = gobjects(0);
         
         % Image graphics object for displaying a frame of the image stsack
-        % in imageAxes.
+        % in imageAxes. Created in constructor.
         imageFrame = gobjects(0);
         
-        % Slider for changing the displayed image frame.
+        % Slider for changing the displayed image frame. Created in
+        % constructor.
         frameSlider = gobjects(0);
         
         % Text for displaying info about the image stack or cursor
-        % locaiton, etc.
+        % locaiton, etc. Created in constructor.
         infoText = gobjects(0);
         
+        % Optional list of buttons displayed to the left of infoText.
         leftHeaderButtons = gobjects(0);
         
+        % Optional list of buttons displayed to the right of infoText.
         rightHeaderButtons = gobjects(0);
         
-        % Optional toolbar panel.
+        % Optional toolbar panel displayed above infoText.
         toolbarPanel = gobjects(0);
-        
+    end
+    
+    properties (Access = private)
+        % Calls resize() upon ancestor figure's SizeChanged events.
+        % Access via updateResizeListener() and removeResizeListener().
         resizeListener = [];
-        
-        overlayImageStackViewer = ImageStackViewer.empty;
-        overlayColorChannels = 'green-magenta';
     end
     
     properties (Dependent)
         % Parent graphics object.
         Parent
         
-        % Visibility of all graphics objects besides toolbarPanel
+        % Visibility of all graphics objects.
         Visible
     end
     
     events
+        % Notify when setting imageStack property.
         ImageStackChanged
+        
+        % Notify after showFrame().
         FrameChanged
     end
     
     methods
         function obj = ImageStackViewer(parent)
-            %IMAGESTACKVIEWER Construct an instance of this class
-            %   Detailed explanation goes here
+            %IMAGESTACKVIEWER Constructor
             
-            % requires a parent graphics object
-            % will resize itself to its parent when the containing figure
-            % is resized
+            % Requires a parent graphics object. Will resize itself to its
+            % parent when the containing figure is resized. If parent is
+            % not given, attach this object to a newly created figure.
             if ~exist('parent', 'var') || ~isgraphics(parent)
                 parent = figure();
                 addToolbarExplorationButtons(parent); % old style
@@ -97,23 +103,27 @@ classdef ImageStackViewer < handle
         end
         
         function delete(obj)
+            %DELETE Destructor
+            %   Delete all graphics objects owned by this class instance.
             h = [ ...
                 obj.imageAxes ...
                 obj.frameSlider ...
                 obj.infoText ...
-                obj.toolbarPanel ...
                 obj.leftHeaderButtons ...
                 obj.rightHeaderButtons ...
+                obj.toolbarPanel ...
                 ];
             delete(h(isgraphics(h)));
         end
         
         function parent = get.Parent(obj)
+            %GET.PARENT Get parent graphics object.
             parent = obj.imageAxes.Parent;
         end
         
         function set.Parent(obj, parent)
-            % reparent and reposition all graphics objects
+            %SET.PARENT Set parent graphics object.
+            %	Reparents and repositions all graphics objects.
             obj.imageAxes.Parent = parent;
             obj.frameSlider.Parent = parent;
             obj.infoText.Parent = parent;
@@ -131,16 +141,21 @@ classdef ImageStackViewer < handle
         end
         
         function visible = get.Visible(obj)
+            %GET.VISIBLE Get visibility of all graphics obejcts.
             visible = obj.imageAxes.Visible;
         end
         
         function set.Visible(obj, visible)
-            % reparent and reposition all graphics objects
+            %SET.VISIBLE Set visibility of all graphics obejcts.
             obj.imageAxes.Visible = visible;
             if ~isempty(obj.imageAxes.Children)
                 [obj.imageAxes.Children.Visible] = deal(visible);
             end
-            obj.frameSlider.Visible = visible;
+            if isempty(obj.imageStack) || obj.imageStack.numFrames() <= 1
+                obj.frameSlider.Visible = 'off';
+            else
+                obj.frameSlider.Visible = visible;
+            end
             obj.infoText.Visible = visible;
             if ~isempty(obj.leftHeaderButtons)
                 [obj.leftHeaderButtons.Visible] = deal(visible);
@@ -154,14 +169,15 @@ classdef ImageStackViewer < handle
         end
         
         function set.Position(obj, position)
-            % set position within Parent container and call resize() to
-            % reposition items within updated Position
+            %SET>POSITION Set position within Parent container.
+            %   Calls resize() to reposition all graphics objects.
             obj.Position = position;
             obj.resize();
         end
         
         function set.imageStack(obj, imageStack)
-            % set handle to image stack data and update displayed image
+            %SET.IMAGESTACK Set the handle to the displayed image stack.
+            %	Updates the displayed image and frame slider.
             zoomOut = isempty(obj.imageStack.data) || ~obj.isZoomed();
             obj.imageStack = imageStack;
             nframes = obj.imageStack.numFrames();
@@ -182,23 +198,16 @@ classdef ImageStackViewer < handle
             notify(obj, 'ImageStackChanged');
         end
         
-        function set.overlayImageStackViewer(obj, viewer)
-            obj.overlayImageStackViewer = viewer;
-            obj.showFrame();
-        end
-        
-        function set.overlayColorChannels(obj, colors)
-            obj.overlayColorChannels = colors;
-            obj.showFrame();
-        end
-        
-        function setOverlayColorChannels(obj, colors)
-            obj.overlayColorChannels = colors;
+        function refresh(obj)
+            %REFRESH Update everything by resetting the image stack handle.
+            obj.imageStack = obj.imageStack;
         end
         
         function resize(obj, src, event)
-            %RESIZE Reposition objects within Parent.
+            %RESIZE Reposition all graphics objects within Parent.
             
+            % Get bounding box [x y w h] within Parent in which to display
+            % all graphics objects.
             margin = 2;
             parentUnits = obj.Parent.Units;
             obj.Parent.Units = 'pixels';
@@ -229,6 +238,7 @@ classdef ImageStackViewer < handle
             end
             obj.Parent.Units = parentUnits;
             
+            % Position image axes.
             obj.imageAxes.Position = [x y+15+margin w max(1,h-30-2*margin)];
             if isgraphics(obj.toolbarPanel)
                 obj.imageAxes.Position(4) = obj.imageAxes.Position(4) - 15 - margin;
@@ -237,7 +247,11 @@ classdef ImageStackViewer < handle
                 obj.imageAxes.Position(1) = obj.imageAxes.Position(1) + 15 + margin;
                 obj.imageAxes.Position(3) = obj.imageAxes.Position(3) - 15 - margin;
             end
+            
+            % Get actual displayed image axes position.
             pos = ImageStackViewer.plotboxpos(obj.imageAxes);
+            
+            % Position all other graphics objects around the image axes.
             obj.frameSlider.Position = [pos(1) pos(2)-margin-15 pos(3) 15];
             wl = 0;
             wr = 0;
@@ -245,7 +259,10 @@ classdef ImageStackViewer < handle
                 wl = margin + sum(horzcat(obj.leftHeaderButtons.Position(3)));
             end
             if ~isempty(obj.rightHeaderButtons)
-                wr = margin + sum(horzcat(obj.rightHeaderButtons.Position(3)));
+                wr = margin;
+                for button = obj.rightHeaderButtons
+                    wr = wr + button.Position(3);
+                end
             end
             obj.infoText.Position = [pos(1)+wl pos(2)+pos(4)+margin pos(3)-wl-wr 15];
             if wl
@@ -269,6 +286,8 @@ classdef ImageStackViewer < handle
         end
         
         function updateResizeListener(obj)
+            %UPDATERESIZELISTENER Automatically resize to Parent.
+            %   Call resize() on ancestor figure's SizeChanged events.
             if ~isempty(obj.resizeListener) && isvalid(obj.resizeListener)
                 delete(obj.resizeListener);
             end
@@ -276,6 +295,7 @@ classdef ImageStackViewer < handle
         end
         
         function removeResizeListener(obj)
+            %REMOVERESIZELISTENER Do NOT automatically resize to Parent.
             if ~isempty(obj.resizeListener) && isvalid(obj.resizeListener)
                 delete(obj.resizeListener);
             end
@@ -291,6 +311,7 @@ classdef ImageStackViewer < handle
         end
         
         function t = getCurrentFrameIndex(obj)
+            %GETCURRENTFRAMEINDEX Return current frame index from slider.
             t = 0;
             nframes = obj.imageStack.numFrames();
             if nframes == 1
@@ -301,6 +322,7 @@ classdef ImageStackViewer < handle
         end
         
         function frame = getFrameData(obj, t)
+            %GETFRAMEDATA Return image data for frame t.
             if ~exist('t', 'var') || isempty(t)
                 t = getCurrentFrameIndex(obj);
             end
@@ -308,6 +330,7 @@ classdef ImageStackViewer < handle
         end
         
         function showFrame(obj, t)
+            %SHOWFRAME Display frame t.
             if ~exist('t', 'var')
                 t = obj.getCurrentFrameIndex();
             end
@@ -316,26 +339,7 @@ classdef ImageStackViewer < handle
                 obj.imageFrame.CData = [];
             elseif size(frame,3) == 1 % monochrome
                 I = imadjust(uint16(frame));
-                if isempty(obj.overlayImageStackViewer)
-                    obj.imageFrame.CData = cat(3,I,I,I);
-                else
-                    try
-                        I2 = obj.overlayImageStackViewer.getFrameData();
-                        if size(I2,3) ~= 1
-                            throw MException('', '');
-                        end
-                        I2 = imadjust(uint16(I2));
-                        % align I2 -> I
-%                         if ~isempty(data.channelAlignments(c2,c).transformation)
-%                             I2 =  imwarp(I2, data.channelAlignments(c2,c).transformation, 'OutputView', imref2d(size(I)));
-%                         elseif ~isempty(data.channelAlignments(c,c2).transformation)
-%                             I2 = imwarp(I2, invert(data.channelAlignments(c,c2).transformation), 'OutputView', imref2d(size(I)));
-%                         end
-                        obj.imageFrame.CData = imfuse(I, I2, 'ColorChannels', obj.overlayColorChannels);
-                    catch
-                        obj.imageFrame.CData = cat(3,I,I,I);
-                    end
-                end
+                obj.imageFrame.CData = cat(3,I,I,I);
             elseif size(frame,3) == 3 % assume RGB
                 obj.imageFrame.CData = imadjust(uint16(frame));
             else
@@ -356,6 +360,7 @@ classdef ImageStackViewer < handle
         end
         
         function updateInfoText(obj)
+            %UPDATEINFOTEXT Show image stack and frame info above image.
             if isempty(obj.imageFrame.CData)
                 obj.infoText.String = '';
             else
@@ -375,38 +380,28 @@ classdef ImageStackViewer < handle
         end
         
         function tf = isZoomed(obj)
+            %ISZOOMED Return zoom status for image axes.
             tf = ImageStackViewer.isAxesZoomed(obj.imageAxes);
         end
         
         function zoomOutFullImage(obj)
+            %ZOOMOUTFULLIMAGE Autoscale to show full image.
             if ~isempty(obj.imageFrame.CData)
                 obj.imageFrame.XData = [1 size(obj.imageFrame.CData,2)];
                 obj.imageFrame.YData = [1 size(obj.imageFrame.CData,1)];
                 obj.imageAxes.XLim = [0.5, obj.imageFrame.XData(end)+0.5];
                 obj.imageAxes.YLim = [0.5, obj.imageFrame.YData(end)+0.5];
-%                 notify(obj, 'ZoomChange');
             end
         end
         
         function imageAxesButtonDown(obj, src, event)
+            %IMAGEAXESBUTTONDOWN Handle button press in image axes.
             x = event.IntersectionPoint(1);
             y = event.IntersectionPoint(2);
-            if event.Button == 1 % left
-                obj.leftClickInImage(x, y);
+            if event.Button == 1 % lefts
             elseif event.Button == 2 % middle
-                obj.middleClickInImage(x, y);
             elseif event.Button == 3 % right
-                obj.rightClickInImage(x, y);
             end
-        end
-        
-        function leftClickInImage(obj, x, y)
-        end
-        
-        function middleClickInImage(obj, x, y)
-        end
-        
-        function rightClickInImage(obj, x, y)
         end
     end
     
@@ -555,6 +550,7 @@ classdef ImageStackViewer < handle
         end
         
         function tf = isAxesZoomed(ax)
+            %ISAXESZOOMED Return zoom status for axes ax.
             unzoomed = getappdata(ax, 'matlab_graphics_resetplotview');
             if isempty(unzoomed) ...
                     || (isequal(ax.XLim, unzoomed.XLim) && isequal(ax.YLim, unzoomed.YLim))

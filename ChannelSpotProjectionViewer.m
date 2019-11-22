@@ -72,15 +72,15 @@ classdef ChannelSpotProjectionViewer < handle
             obj.histLine = plot(ax, nan, nan, '-', ...
                 'HitTest', 'off', 'PickableParts', 'none');
             
-            obj.infoText = uicontrol(parent, 'Style', 'text', ...
-                'HorizontalAlignment', 'left');
+            obj.infoText = uicontrol(parent, 'Style', 'pushbutton', ...
+                'Callback', @(varargin) obj.infoTextPressed());
             
             obj.menuButton = uicontrol(parent, 'style', 'pushbutton', ...
-                'String', '=', 'Position', [0 0 15 15], ...
+                'String', char(hex2dec('2630')), 'Position', [0 0 15 15], ...
                 'Callback', @(varargin) obj.menuButtonPushed());
             
             obj.autoscaleButton = uicontrol(parent, 'style', 'pushbutton', ...
-                'String', 'A', 'Position', [0 0 15 15], ...
+                'String', char(hex2dec('2922')), 'Position', [0 0 15 15], ...
                 'Callback', @(varargin) obj.autoscale());
             
             obj.selectedImageStack = ImageStack.empty;
@@ -204,8 +204,8 @@ classdef ChannelSpotProjectionViewer < handle
             obj.histAxes.Position = [x+w-100 y+20 100 max(1,h-35-margin)];
             pos = ChannelSpotProjectionViewer.plotboxpos(obj.projAxes);
             
-            obj.infoText.Position = [pos(1)+30 pos(2)+pos(4)+margin pos(3)-45-margin 15];
-            obj.menuButton.Position = [x y+h-15 15 15];
+            obj.infoText.Position = [pos(1)+45+margin pos(2)+pos(4)+margin pos(3)-60-2*margin 15];
+            obj.menuButton.Position = [pos(1)+30 pos(2)+pos(4)+margin 15 15];
             obj.autoscaleButton.Position = [x+w-100-margin-15 y+h-15 15 15];
         end
         

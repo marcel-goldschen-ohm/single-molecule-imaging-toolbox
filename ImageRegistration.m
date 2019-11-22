@@ -43,7 +43,7 @@ classdef ImageRegistration < handle
             if exist('fixed', 'var') && ~isempty(fixed)
                 obj.fixedImage = fixed;
             end
-            movingReg = registrationEstimatorAppWrapper(imadjust(obj.movingImage), imadjust(obj.fixedImage));
+            movingReg = ImageRegistration.registrationEstimatorAppWrapper(imadjust(obj.movingImage), imadjust(obj.fixedImage));
             if ~isempty(movingReg)
                 obj.transformation = movingReg.Transformation;
             end
