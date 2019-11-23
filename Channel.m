@@ -12,17 +12,18 @@ classdef Channel < handle
         images = ImageStack.empty;
         
         % map this channel onto another channel
-        alignedToChannel = Channel.empty;
-        alignment = ImageRegistration;
+        alignedTo = struct( ...
+            'channel', Channel.empty, ...
+            'registration', ImageRegistration ...
+            );
+%         alignedToChannel = Channel.empty;
+%         alignment = ImageRegistration;
         
         % array of spots
         spots = Spot.empty;
         
         % parent experiment handle
         experiment = Experiment.empty;
-        
-        % handle to selected image
-        selectedImage = ImageStack.empty;
     end
     
     methods

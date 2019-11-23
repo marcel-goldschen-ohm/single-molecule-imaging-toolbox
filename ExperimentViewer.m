@@ -50,7 +50,7 @@ classdef ExperimentViewer < handle
             obj.saveDataBtn = uicontrol(parent, 'Style', 'pushbutton', ...
                 'String', 'Save', 'Callback', @(varargin) obj.saveData());
             obj.refreshUiBtn = uicontrol(parent, 'Style', 'pushbutton', ...
-                'String', char(hex2dec('27f3')), 'Callback', @(varargin) obj.refreshUi());
+                'String', 'Refresh', 'Callback', @(varargin) obj.refreshUi());
             
             obj.channelsListHeaderText = uicontrol(parent, 'Style', 'text', ...
                 'String', 'Channels', 'HorizontalAlignment', 'left', ...
@@ -64,7 +64,6 @@ classdef ExperimentViewer < handle
             obj.channelsListBox = uicontrol(parent, 'Style', 'listbox', ...
                 'Callback', @(varargin) obj.showChannels());
             
-        
             obj.showImagesAndOrProjectionsBtnGroup = uibuttongroup(parent, ...
                 'BorderType', 'none', 'Units', 'pixels');
             obj.showImagesBtn = uicontrol(obj.showImagesAndOrProjectionsBtnGroup, ...
@@ -77,6 +76,7 @@ classdef ExperimentViewer < handle
                 'Style', 'togglebutton', 'String', 'Img & Proj', 'Value', 1, ...
                 'Callback', @(varargin) obj.resize());
             
+%             obj.Parent = parent; % calls resize() and updateResizeListener()
             obj.resize();
             obj.updateResizeListener();
         end
@@ -97,6 +97,9 @@ classdef ExperimentViewer < handle
                 obj.channelSpotProjectionViewers(c).channel = experiment.channels(c);
                 obj.channelSpotProjectionViewers(c).experimentViewer = obj;
                 obj.channelSpotProjectionViewers(c).removeResizeListener();
+                obj.channelSpotProjectionViewers(c).selectedSpotChangedListener = ...
+                    addlistener(obj.channelImageViewers(c), 'SelectedSpotChanged', ...
+                    @(src, varargin) obj.channelSpotProjectionViewers(c).onSelectedSpotChanged(src));
             end
             obj.updateChannelsListBox();
             obj.showChannels();
@@ -109,6 +112,10 @@ classdef ExperimentViewer < handle
         end
         
         function set.Parent(obj, parent)
+%             % remove from previous parent's list of children
+%             if isvalid(obj.Parent)
+%                 obj.Parent.Children(obj.Parent.Children == obj) = [];
+%             end
             % reparent and reposition all graphics objects
             obj.channelsListHeaderText.Parent = parent;
             obj.addChannelBtn.Parent = parent;
@@ -122,6 +129,8 @@ classdef ExperimentViewer < handle
             end
             obj.resize();
             obj.updateResizeListener();
+%             % add to new parent's list of children
+%             obj.Parent.Children = [obj.Parent.Children obj];
         end
         
         function resize(obj, varargin)
@@ -320,6 +329,7 @@ classdef ExperimentViewer < handle
             fig = ancestor(obj.Parent, 'Figure');
             [path, file, ext] = fileparts(filepath);
             fig.Name = strrep(file, '_', ' ');
+            figure(fig);
         end
         
         function saveData(obj, filepath, maxImageStackFrames)
@@ -356,6 +366,7 @@ classdef ExperimentViewer < handle
             fig = ancestor(obj.Parent, 'Figure');
             [path, file, ext] = fileparts(filepath);
             fig.Name = strrep(file, '_', ' ');
+            figure(fig);
         end
         
         function loadAllMissingImageStacks(obj)

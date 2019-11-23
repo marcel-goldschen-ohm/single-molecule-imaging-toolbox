@@ -103,8 +103,7 @@ classdef ImageStackViewer < handle
         end
         
         function delete(obj)
-            %DELETE Destructor
-            %   Delete all graphics objects owned by this class instance.
+            %DELETE Delete all graphics object properties.
             h = [ ...
                 obj.imageAxes ...
                 obj.frameSlider ...
@@ -117,13 +116,12 @@ classdef ImageStackViewer < handle
         end
         
         function parent = get.Parent(obj)
-            %GET.PARENT Get parent graphics object.
+            % Get parent of graphics object properties.
             parent = obj.imageAxes.Parent;
         end
         
         function set.Parent(obj, parent)
-            %SET.PARENT Set parent graphics object.
-            %	Reparents and repositions all graphics objects.
+            % Set parent of graphics object properties and resize to fit.
             obj.imageAxes.Parent = parent;
             obj.frameSlider.Parent = parent;
             obj.infoText.Parent = parent;
@@ -141,12 +139,12 @@ classdef ImageStackViewer < handle
         end
         
         function visible = get.Visible(obj)
-            %GET.VISIBLE Get visibility of all graphics obejcts.
+            % Get visibility of all graphics obejct properties.
             visible = obj.imageAxes.Visible;
         end
         
         function set.Visible(obj, visible)
-            %SET.VISIBLE Set visibility of all graphics obejcts.
+            % Set visibility of all graphics obejct properties.
             obj.imageAxes.Visible = visible;
             if ~isempty(obj.imageAxes.Children)
                 [obj.imageAxes.Children.Visible] = deal(visible);
@@ -169,15 +167,14 @@ classdef ImageStackViewer < handle
         end
         
         function set.Position(obj, position)
-            %SET>POSITION Set position within Parent container.
-            %   Calls resize() to reposition all graphics objects.
+            % Set position within Parent container and resize to fit.
             obj.Position = position;
             obj.resize();
         end
         
         function set.imageStack(obj, imageStack)
-            %SET.IMAGESTACK Set the handle to the displayed image stack.
-            %	Updates the displayed image and frame slider.
+            % Set handle to the displayed image stack. This updates
+            % everything including the displayed image and frame slider.
             zoomOut = isempty(obj.imageStack.data) || ~obj.isZoomed();
             obj.imageStack = imageStack;
             nframes = obj.imageStack.numFrames();

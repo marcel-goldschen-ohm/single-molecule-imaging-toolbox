@@ -15,7 +15,7 @@ classdef ChannelImageViewer < ImageStackViewer
         
         % Handle to the selected spot.
         % If it's NOT in the channel's list of spots, it will reflect the
-        % last click position within the image axes.
+        % user's last click position within the image axes.
         selectedSpot = Spot.empty;
         
         % Markers indicating the position of the channel's spots.
@@ -94,8 +94,8 @@ classdef ChannelImageViewer < ImageStackViewer
             obj.spotMarkers = scatter(obj.imageAxes, nan, nan, 'mo', ...
                 'HitTest', 'off', 'PickableParts', 'none');
             obj.selectedSpotMarker = scatter(obj.imageAxes, nan, nan, 'co', ...
+                'LineWidth', 2, ...
                 'HitTest', 'off', 'PickableParts', 'none');
-            obj.selectedSpotMarker.MarkerHandle.LineWidth = 2;
             
             obj.imageStackChangedListener = ...
                 addlistener(obj, 'ImageStackChanged', @(varargin) obj.onImageStackChanged());
@@ -106,10 +106,13 @@ classdef ChannelImageViewer < ImageStackViewer
         end
         
         function delete(obj)
-            %DELETE Destructor
-            %   Delete all graphics objects not in ImageStackViewer.
+            %DELETE Delete all graphics object properties.
             h = [ ...
                 obj.spotMarkers ...
+                obj.selectedSpotMarker ...
+                obj.menuButton ...
+                obj.zoomOutButton ...
+                obj.brightnessContrastButton ...
                 obj.selectedSpotMarker ...
                 ];
             delete(h(isgraphics(h)));
@@ -120,11 +123,7 @@ classdef ChannelImageViewer < ImageStackViewer
             obj.channel = channel;
             obj.imageAxes.YLabel.String = channel.label;
             if ~isempty(channel.images)
-                if ~isempty(channel.selectedImage) && any(channel.images == channel.selectedImage)
-                    obj.imageStack = channel.selectedImage;
-                else
-                    obj.imageStack = channel.images(1);
-                end
+                obj.imageStack = channel.images(1);
             else
                 obj.imageStack = ImageStack();
             end
@@ -155,15 +154,15 @@ classdef ChannelImageViewer < ImageStackViewer
         
         function onImageStackChanged(obj)
             %ONIMAGESTACKCHANGED Handle image stack changed event.
-            if any(obj.channel.images == obj.imageStack)
-                obj.channel.selectedImage = obj.imageStack;
-            else
-                obj.channel.selectedImage = ImageStack.empty;
-            end
+            obj.updateOtherViewersOverlaidWithThisViewer();
         end
         
         function onFrameChanged(obj)
             %ONFRAMECHANGED Handle frame changed event.
+            obj.updateOtherViewersOverlaidWithThisViewer();
+        end
+        
+        function updateOtherViewersOverlaidWithThisViewer(obj)
             if ~isempty(obj.experimentViewer)
                 otherChannelImageViewers = setdiff(obj.experimentViewer.channelImageViewers, obj);
                 for viewer = otherChannelImageViewers
@@ -197,24 +196,24 @@ classdef ChannelImageViewer < ImageStackViewer
                 % T1 aligns I1 -> experiment coords
                 T1 = [];
                 channel = obj.channel;
-                while ~isempty(channel.alignedToChannel)
+                while ~isempty(channel.alignedTo.channel)
                     if isempty(T1)
-                        T1 = channel.alignment.transformation;
+                        T1 = channel.alignedTo.registration.transformation;
                     else
-                        T1.T = channel.alignment.transformation.T * T1.T;
+                        T1.T = channel.alignedTo.registration.transformation.T * T1.T;
                     end
-                    channel = channel.alignedToChannel;
+                    channel = channel.alignedTo.channel;
                 end
                 % T2 aligns I2 -> experiment coords
                 T2 = [];
                 channel = obj.overlayChannelImageViewer.channel;
-                while ~isempty(channel.alignedToChannel)
+                while ~isempty(channel.alignedTo.channel)
                     if isempty(T2)
-                        T2 = channel.alignment.transformation;
+                        T2 = channel.alignedTo.registration.transformation;
                     else
-                        T2.T = channel.alignment.transformation.T * T2.T;
+                        T2.T = channel.alignedTo.registration.transformation.T * T2.T;
                     end
-                    channel = channel.alignedToChannel;
+                    channel = channel.alignedTo.channel;
                 end
                 % I2 -> inv(T1) * T2 * I2
                 if ~isempty(T1) && ~isempty(T2)
@@ -362,11 +361,11 @@ classdef ChannelImageViewer < ImageStackViewer
                 alignToMenu = uimenu(menu, 'Label', 'Align To Channel', ...
                     'Separator', 'on');
                 uimenu(alignToMenu, 'Label', 'None', ...
-                    'Checked', isempty(obj.channel.alignedToChannel), ...
+                    'Checked', isempty(obj.channel.alignedTo.channel), ...
                     'Callback', @(varargin) obj.alignToChannel(Channel.empty));
                 for channel = otherChannels
                     uimenu(alignToMenu, 'Label', channel.label, ...
-                        'Checked', ~isempty(obj.channel.alignedToChannel) && (obj.channel.alignedToChannel == channel), ...
+                        'Checked', ~isempty(obj.channel.alignedTo.channel) && (obj.channel.alignedTo.channel == channel), ...
                         'Callback', @(varargin) obj.alignToChannel(channel));
                 end
             end
@@ -414,9 +413,9 @@ classdef ChannelImageViewer < ImageStackViewer
             y = event.IntersectionPoint(2);
             if event.Button == 1 % left
                 % select spot
-                spotIdx = obj.selectSpot(x, y);
-                if spotIdx
-                    obj.selectedSpot = obj.channel.spots(spotIdx);
+                idx = obj.spotIndexAt(x, y);
+                if idx
+                    obj.selectedSpot = obj.channel.spots(idx);
                 else
                     clickSpot = Spot;
                     clickSpot.xy = [x y];
@@ -430,11 +429,11 @@ classdef ChannelImageViewer < ImageStackViewer
                 fig = ancestor(obj.Parent, 'Figure');
                 menu.Parent = fig;
                 menu.Position(1:2) = get(fig, 'CurrentPoint');
-                spotIdx = obj.selectSpot(x, y);
-                if spotIdx
+                idx = obj.spotIndexAt(x, y);
+                if idx
                     uimenu(menu, 'Label', 'Remove Spot', ...
                         'Separator', 'on', ...
-                        'Callback', @(varargin) obj.removeSpot(spotIdx));
+                        'Callback', @(varargin) obj.removeSpot(idx));
                 else
                     uimenu(menu, 'Label', 'Add Spot', ...
                         'Separator', 'on', ...
@@ -444,8 +443,8 @@ classdef ChannelImageViewer < ImageStackViewer
             end
         end
         
-        function idx = selectSpot(obj, x, y)
-            %SELECTSPOT Return index of spot at (x,y).
+        function idx = spotIndexAt(obj, x, y)
+            %SPOTINDEXAT Return index of spot at (x,y).
             idx = [];
             if ~isempty(obj.channel.spots)
                 xy = vertcat(obj.channel.spots.xy);
@@ -764,16 +763,16 @@ classdef ChannelImageViewer < ImageStackViewer
         end
         
         function alignToChannel(obj, channel, method)
-            %ALIGNTOCHANNEL Align channels by images or spots
-            if ~isempty(channel) && ~isempty(channel.alignedToChannel) && channel.alignedToChannel == obj.channel
+            %ALIGNTOCHANNEL Align obj.channel --> channel by images or spots
+            if ~isempty(channel) && ~isempty(channel.alignedTo.channel) && channel.alignedTo.channel == obj.channel
                 warndlg({[char(channel.label) ' is already aligned to ' char(obj.channel.label)], ...
                     ['Aligning ' char(obj.channel.label) ' to ' char(channel.label) ' would result in a cyclic alignment loop.'], ...
                     'This is not allowed.'}, ...
                     'Cyclic Alignment Attempt');
                 return
             end
-            obj.channel.alignedToChannel = channel;
-            obj.channel.alignment = ImageRegistration;
+            obj.channel.alignedTo.channel = channel;
+            obj.channel.alignedTo.registration = ImageRegistration;
             if isempty(channel)
                 return
             end
@@ -802,12 +801,12 @@ classdef ChannelImageViewer < ImageStackViewer
                 fixed = fixedViewer.getFrameData();
                 moving = imadjust(uint16(moving));
                 fixed = imadjust(uint16(fixed));
-                obj.channel.alignment.registerImages(moving, fixed);
+                obj.channel.alignedTo.registration.registerImages(moving, fixed);
             elseif method == "spots"
                 % TODO
                 warndlg('Aligning spots not yet implemented.', 'Coming Soon');
             elseif method == "identical"
-                obj.channel.alignment = ImageRegistration;
+                obj.channel.alignedTo.registration = ImageRegistration;
             end
         end
     end
