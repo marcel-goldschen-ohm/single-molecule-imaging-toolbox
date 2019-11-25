@@ -24,6 +24,11 @@ classdef ExperimentViewer < handle
         showImagesAndProjectionsBtn = gobjects(0);
         
         resizeListener = [];
+        selectedSpotChangedListeners = event.listener.empty;
+    end
+    
+    properties (Access = private)
+        spotChangingLock = 0;
     end
     
     properties (Dependent)
@@ -86,6 +91,7 @@ classdef ExperimentViewer < handle
             nchannels = numel(experiment.channels);
             delete(obj.channelImageViewers);
             delete(obj.channelSpotProjectionViewers);
+            delete(obj.selectedSpotChangedListeners);
             obj.channelImageViewers = ChannelImageViewer.empty;
             obj.channelSpotProjectionViewers = ChannelSpotProjectionViewer.empty;
             for c = 1:nchannels
@@ -100,11 +106,64 @@ classdef ExperimentViewer < handle
                 obj.channelSpotProjectionViewers(c).selectedSpotChangedListener = ...
                     addlistener(obj.channelImageViewers(c), 'SelectedSpotChanged', ...
                     @(src, varargin) obj.channelSpotProjectionViewers(c).onSelectedSpotChanged(src));
+                obj.selectedSpotChangedListeners(c) = ...
+                    addlistener(obj.channelImageViewers(c), 'SelectedSpotChanged', ...
+                    @(src, varargin) obj.onSelectedSpotChanged(src));
             end
             obj.updateChannelsListBox();
             obj.showChannels();
             linkaxes(horzcat(obj.channelImageViewers.imageAxes), 'xy');
             linkaxes(horzcat(obj.channelSpotProjectionViewers.projAxes), 'x');
+        end
+        
+        function onSelectedSpotChanged(obj, src)
+            if obj.spotChangingLock
+                return
+            end
+            obj.spotChangingLock = 1;
+            if isempty(src.selectedSpot)
+                % clear selected spot in all channels
+                for viewer = obj.channelImageViewers
+                    if viewer ~= src
+                        viewer.selectedSpot = Spot.empty;
+                    end
+                end
+            else
+                idx = find(src.channel.spots == src.selectedSpot, 1);
+                if isempty(idx)
+                    % not a spot, just show same location in other viewers
+                    for viewer = obj.channelImageViewers
+                        if viewer ~= src
+                            spot = Spot;
+                            spot.xy = viewer.channel.getAlignedSpotsInLocalCoords(src.channel, src.selectedSpot.xy);
+                            viewer.selectedSpot = spot;
+                        end
+                    end
+                else
+                    % a spot, show same spot in other viewers ONLY if spots
+                    % are aligned between channels OR the other viewer has
+                    % no spots itself
+                    for viewer = obj.channelImageViewers
+                        if viewer ~= src
+                            if isempty(viewer.channel.spots)
+                                % just show aligned location
+                                spot = Spot;
+                                spot.xy = viewer.channel.getAlignedSpotsInLocalCoords(src.channel, src.selectedSpot.xy);
+                                viewer.selectedSpot = spot;
+                            else
+                                spot = viewer.channel.spots(idx);
+                                if isequal(size(src.channel.spots), size(viewer.channel.spots))
+                                    xy = src.channel.getAlignedSpotsInLocalCoords(viewer.channel, spot.xy);
+                                    if sum((xy - src.selectedSpot.xy).^2) < 3^2
+                                        viewer.selectedSpot = spot;
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            obj.spotChangingLock = 0;
         end
         
         function parent = get.Parent(obj)

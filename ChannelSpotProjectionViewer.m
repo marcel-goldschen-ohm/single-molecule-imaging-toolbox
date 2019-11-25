@@ -133,6 +133,7 @@ classdef ChannelSpotProjectionViewer < handle
                     x = spot.tproj.timeSamples;
                     obj.projLine.XData = x;
                     obj.projLine.YData = y;
+                    obj.autoscale();
                     return
                 end
             end
@@ -310,7 +311,10 @@ classdef ChannelSpotProjectionViewer < handle
             if all(isnan(y))
                 return
             end
-            axis(obj.projAxes, [x(1) x(end) min(y) max(y)]);
+            ymin = min(y);
+            ymax = max(y);
+            dy = 0.1 * (ymax - ymin);
+            axis(obj.projAxes, [x(1) x(end) ymin-dy ymax+dy]);
         end
     end
     

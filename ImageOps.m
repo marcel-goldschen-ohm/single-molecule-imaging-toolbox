@@ -404,7 +404,7 @@ classdef ImageOps < handle
                     minPeakSeparation = 3;
                 end
                 dlg = dialog('Name', 'Find Image Maxima');
-                w = 200;
+                w = 300;
                 lh = 20;
                 h = 4 * lh + 30;
                 dlg.Position(3) = w;

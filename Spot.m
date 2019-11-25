@@ -63,7 +63,7 @@ classdef Spot < handle
             maskCol0 = ceil(maskNCols / 2);
             rows = row0-maskRow0+1:row0+maskNRows-maskRow0;
             cols = col0-maskCol0+1:col0+maskNCols-maskCol0;
-            mask = obj.mask
+            mask = obj.mask;
             out = union(find(rows < 1), find(rows > imstack.height()));
             if ~isempty(out)
                 rows(out) = [];
@@ -74,13 +74,11 @@ classdef Spot < handle
                 cols(out) = [];
                 mask(:,out) = [];
             end
-            mask
             if isempty(mask)
                 obj.tproj.Time = [];
                 obj.tproj.Data = [];
                 return
             end
-            size(imstack.data)
             nframes = imstack.numFrames();
             obj.tproj.Time = reshape(1:nframes, [], 1);
             obj.tproj.Data = reshape( ...

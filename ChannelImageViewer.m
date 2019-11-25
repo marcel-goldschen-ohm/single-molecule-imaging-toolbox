@@ -193,37 +193,7 @@ classdef ChannelImageViewer < ImageStackViewer
                 end
                 I1 = imadjust(uint16(I1));
                 I2 = imadjust(uint16(I2));
-                % T1 aligns I1 -> experiment coords
-                T1 = [];
-                channel = obj.channel;
-                while ~isempty(channel.alignedTo.channel)
-                    if isempty(T1)
-                        T1 = channel.alignedTo.registration.transformation;
-                    else
-                        T1.T = channel.alignedTo.registration.transformation.T * T1.T;
-                    end
-                    channel = channel.alignedTo.channel;
-                end
-                % T2 aligns I2 -> experiment coords
-                T2 = [];
-                channel = obj.overlayChannelImageViewer.channel;
-                while ~isempty(channel.alignedTo.channel)
-                    if isempty(T2)
-                        T2 = channel.alignedTo.registration.transformation;
-                    else
-                        T2.T = channel.alignedTo.registration.transformation.T * T2.T;
-                    end
-                    channel = channel.alignedTo.channel;
-                end
-                % I2 -> inv(T1) * T2 * I2
-                if ~isempty(T1) && ~isempty(T2)
-                    T2.T = invert(T1).T * T2.T;
-                    I2 =  imwarp(I2, T2, 'OutputView', imref2d(size(I1)));
-                elseif ~isempty(T2)
-                    I2 =  imwarp(I2, T2, 'OutputView', imref2d(size(I1)));
-                elseif ~isempty(T1)
-                    I2 =  imwarp(I2, invert(T1), 'OutputView', imref2d(size(I1)));
-                end
+                I2 = obj.channel.getAlignedImageInLocalCoords(obj.overlayChannelImageViewer.channel, I2);
                 % show overlaid images
                 obj.imageFrame.CData = imfuse(I1, I2, 'ColorChannels', obj.overlayColorChannels);
                 if isempty(obj.imageFrame.CData)
@@ -310,8 +280,7 @@ classdef ChannelImageViewer < ImageStackViewer
                         && (obj.overlayChannelImageViewer.channel == channel), ...
                         'Callback', @(varargin) obj.setOverlayChannel(channel));
                 end
-                overlayColorsMenu = uimenu(overlayMenu, 'Label', 'Overlay Colors', ...
-                    'Separator', 'on');
+                overlayColorsMenu = uimenu(menu, 'Label', 'Overlay Colors');
                 uimenu(overlayColorsMenu, 'Label', 'green-magenta', ...
                     'Checked', (~isnumeric(obj.overlayColorChannels) ...
                     && obj.overlayColorChannels == "green-magenta") ...
@@ -373,6 +342,9 @@ classdef ChannelImageViewer < ImageStackViewer
             uimenu(menu, 'Label', 'Find Spots', ...
                 'Separator', 'on', ...
                 'Callback', @(varargin) obj.findSpots());
+            
+            uimenu(menu, 'Label', 'Copy Aligned Spots to all Channels', ...
+                'Callback', @(varargin) obj.copyAlignedSpotsToAllOtherChannels());
             
             uimenu(menu, 'Label', 'Clear Spots', ...
                 'Callback', @(varargin) obj.clearSpots());
@@ -668,7 +640,7 @@ classdef ChannelImageViewer < ImageStackViewer
             if ~t
                 return
             end
-            im = obj.imageStack.getFrame(t);
+            im = obj.imageStack.getFrameData(t);
             if islogical(im)
                 props = regionprops(im, 'all');
                 fieldnames(props)
@@ -807,6 +779,25 @@ classdef ChannelImageViewer < ImageStackViewer
                 warndlg('Aligning spots not yet implemented.', 'Coming Soon');
             elseif method == "identical"
                 obj.channel.alignedTo.registration = ImageRegistration;
+            end
+        end
+        
+        function copyAlignedSpotsToAllOtherChannels(obj)
+            otherChannels = obj.channel.getOtherChannelsInExperiment();
+            xy = vertcat(obj.channel.spots.xy);
+            nspots = numel(obj.channel.spots);
+            for channel = otherChannels
+                cxy = channel.getAlignedSpotsInLocalCoords(obj.channel, xy);
+                channel.spots = Spot.empty;
+                channel.spots(nspots,1) = Spot;
+                for i = 1:nspots
+                    channel.spots(i,1).xy = cxy(i,:);
+                end
+            end
+            if ~isempty(obj.experimentViewer)
+                for viewer = obj.experimentViewer.channelImageViewers
+                    viewer.updateSpotMarkers();
+                end
             end
         end
     end
