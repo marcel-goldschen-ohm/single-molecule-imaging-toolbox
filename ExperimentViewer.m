@@ -4,8 +4,9 @@ classdef ExperimentViewer < handle
     
     properties
         % Experiment handle.
-        experiment = Experiment();
+        experiment = Experiment;
         
+        % Channel viewers.
         channelImageViewers = ChannelImageViewer.empty;
         channelSpotProjectionViewers = ChannelSpotProjectionViewer.empty;
         
@@ -23,11 +24,11 @@ classdef ExperimentViewer < handle
         showProjectionsBtn = gobjects(0);
         showImagesAndProjectionsBtn = gobjects(0);
         
-        resizeListener = [];
-        selectedSpotChangedListeners = event.listener.empty;
+%         selectedSpotChangedListeners = event.listener.empty;
     end
     
     properties (Access = private)
+        resizeListener = [];
         spotChangingLock = 0;
     end
     
@@ -38,8 +39,7 @@ classdef ExperimentViewer < handle
     
     methods
         function obj = ExperimentViewer(parent)
-            %EXPERIMENTVIEWER Construct an instance of this class
-            %   Detailed explanation goes here
+            %EXPERIMENTVIEWER Constructor.
             
             % requires a parent graphics object
             % will resize itself to its parent when the containing figure
@@ -88,27 +88,26 @@ classdef ExperimentViewer < handle
         
         function set.experiment(obj, experiment)
             obj.experiment = experiment;
-            nchannels = numel(experiment.channels);
+            % delete old channel viewers
             delete(obj.channelImageViewers);
             delete(obj.channelSpotProjectionViewers);
-            delete(obj.selectedSpotChangedListeners);
+%             delete(obj.selectedSpotChangedListeners);
+            % create new channel viewers
+            nchannels = numel(experiment.channels);
             obj.channelImageViewers = ChannelImageViewer.empty;
             obj.channelSpotProjectionViewers = ChannelSpotProjectionViewer.empty;
             for c = 1:nchannels
                 obj.channelImageViewers(c) = ChannelImageViewer(obj.Parent);
                 obj.channelImageViewers(c).channel = experiment.channels(c);
                 obj.channelImageViewers(c).experimentViewer = obj;
-                obj.channelImageViewers(c).removeResizeListener();
+                obj.channelImageViewers(c).removeResizeListener(); % Handled by this class.
                 obj.channelSpotProjectionViewers(c) = ChannelSpotProjectionViewer(obj.Parent);
                 obj.channelSpotProjectionViewers(c).channel = experiment.channels(c);
                 obj.channelSpotProjectionViewers(c).experimentViewer = obj;
-                obj.channelSpotProjectionViewers(c).removeResizeListener();
-                obj.channelSpotProjectionViewers(c).selectedSpotChangedListener = ...
-                    addlistener(obj.channelImageViewers(c), 'SelectedSpotChanged', ...
-                    @(src, varargin) obj.channelSpotProjectionViewers(c).onSelectedSpotChanged(src));
-                obj.selectedSpotChangedListeners(c) = ...
-                    addlistener(obj.channelImageViewers(c), 'SelectedSpotChanged', ...
-                    @(src, varargin) obj.onSelectedSpotChanged(src));
+                obj.channelSpotProjectionViewers(c).removeResizeListener(); % Handled by this class.
+%                 obj.selectedSpotChangedListeners(c) = ...
+%                     addlistener(obj.experiment.channels(c), 'SelectedSpotChanged', ...
+%                     @(src, varargin) obj.onSelectedSpotChanged(src));
             end
             obj.updateChannelsListBox();
             obj.showChannels();
@@ -116,48 +115,48 @@ classdef ExperimentViewer < handle
             linkaxes(horzcat(obj.channelSpotProjectionViewers.projAxes), 'x');
         end
         
-        function onSelectedSpotChanged(obj, src)
+        function onSelectedSpotChanged(obj, srcChannel)
             if obj.spotChangingLock
                 return
             end
             obj.spotChangingLock = 1;
-            if isempty(src.selectedSpot)
+            if isempty(srcChannel.selectedSpot)
                 % clear selected spot in all channels
-                for viewer = obj.channelImageViewers
-                    if viewer ~= src
-                        viewer.selectedSpot = Spot.empty;
+                for channel = obj.experiment.channels
+                    if channel ~= srcChannel
+                        channel.selectedSpot = Spot.empty;
                     end
                 end
             else
-                idx = find(src.channel.spots == src.selectedSpot, 1);
+                idx = find(srcChannel.spots == srcChannel.selectedSpot, 1);
                 if isempty(idx)
                     % not a spot, just show same location in other viewers
-                    for viewer = obj.channelImageViewers
-                        if viewer ~= src
+                    for channel = obj.experiment.channels
+                        if channel ~= srcChannel
                             spot = Spot;
-                            spot.xy = viewer.channel.getAlignedSpotsInLocalCoords(src.channel, src.selectedSpot.xy);
-                            viewer.selectedSpot = spot;
+                            spot.xy = channel.getOtherChannelSpotsInLocalCoords(srcChannel, srcChannel.selectedSpot.xy);
+                            channel.selectedSpot = spot;
                         end
                     end
                 else
                     % a spot, show same spot in other viewers ONLY if spots
                     % are aligned between channels OR the other viewer has
                     % no spots itself
-                    for viewer = obj.channelImageViewers
-                        if viewer ~= src
-                            if isempty(viewer.channel.spots)
+                    for channel = obj.experiment.channels
+                        if channel ~= srcChannel
+                            if isempty(channel.spots)
                                 % just show aligned location
                                 spot = Spot;
-                                spot.xy = viewer.channel.getAlignedSpotsInLocalCoords(src.channel, src.selectedSpot.xy);
-                                viewer.selectedSpot = spot;
+                                spot.xy = channel.getOtherChannelSpotsInLocalCoords(srcChannel, srcChannel.selectedSpot.xy);
+                                channel.selectedSpot = spot;
                             else
-                                spot = viewer.channel.spots(idx);
-                                if isequal(size(src.channel.spots), size(viewer.channel.spots))
-                                    xy = src.channel.getAlignedSpotsInLocalCoords(viewer.channel, spot.xy);
-                                    if sum((xy - src.selectedSpot.xy).^2) < 3^2
-                                        viewer.selectedSpot = spot;
-                                    end
-                                end
+                                spot = channel.spots(idx);
+%                                 if isequal(size(src.channel.spots), size(viewer.channel.spots))
+%                                     xy = src.channel.getAlignedSpotsInLocalCoords(viewer.channel, spot.xy);
+%                                     if sum((xy - src.selectedSpot.xy).^2) < 3^2
+%                                         viewer.selectedSpot = spot;
+%                                     end
+%                                 end
                             end
                         end
                     end
@@ -171,10 +170,6 @@ classdef ExperimentViewer < handle
         end
         
         function set.Parent(obj, parent)
-%             % remove from previous parent's list of children
-%             if isvalid(obj.Parent)
-%                 obj.Parent.Children(obj.Parent.Children == obj) = [];
-%             end
             % reparent and reposition all graphics objects
             obj.channelsListHeaderText.Parent = parent;
             obj.addChannelBtn.Parent = parent;
@@ -188,8 +183,6 @@ classdef ExperimentViewer < handle
             end
             obj.resize();
             obj.updateResizeListener();
-%             % add to new parent's list of children
-%             obj.Parent.Children = [obj.Parent.Children obj];
         end
         
         function resize(obj, varargin)

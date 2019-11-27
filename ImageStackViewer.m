@@ -8,7 +8,7 @@ classdef ImageStackViewer < handle
     
     properties
         % ImageStack handle ref to image stack data.
-        imageStack = ImageStack();
+        imageStack = ImageStack;
         
         % Bounding box in which to arrange items within Parent.
         % [] => fill Parent container.
@@ -175,9 +175,13 @@ classdef ImageStackViewer < handle
         function set.imageStack(obj, imageStack)
             % Set handle to the displayed image stack. This updates
             % everything including the displayed image and frame slider.
+            if isequal(obj.imageStack, imageStack)
+                return
+            end
             zoomOut = isempty(obj.imageStack.data) || ~obj.isZoomed();
             obj.imageStack = imageStack;
             nframes = obj.imageStack.numFrames();
+            prevFrameIndex = obj.frameSlider.Value;
             if nframes > 1
                 obj.frameSlider.Visible = 'on';
                 obj.frameSlider.Min = 1;
@@ -350,10 +354,12 @@ classdef ImageStackViewer < handle
                 h = size(obj.imageFrame.CData,1);
                 obj.imageFrame.XData = [1 w];
                 obj.imageFrame.YData = [1 h];
-                obj.frameSlider.Value = t;
+                if obj.imageStack.numFrames() > 1
+                    obj.frameSlider.Value = t;
+                    notify(obj, 'FrameChanged');
+                end
             end
             obj.updateInfoText();
-            notify(obj, 'FrameChanged');
         end
         
         function updateInfoText(obj)

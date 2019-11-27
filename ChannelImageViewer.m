@@ -11,12 +11,7 @@ classdef ChannelImageViewer < ImageStackViewer
     
     properties
         % Channel handle.
-        channel = Channel();
-        
-        % Handle to the selected spot.
-        % If it's NOT in the channel's list of spots, it will reflect the
-        % user's last click position within the image axes.
-        selectedSpot = Spot.empty;
+        channel = Channel;
         
         % Markers indicating the position of the channel's spots.
         spotMarkers = gobjects(0);
@@ -42,22 +37,19 @@ classdef ChannelImageViewer < ImageStackViewer
         
         % Overlay color scheme.
         overlayColorChannels = 'green-magenta';
-        
-        % Handle image stack change events.
-        imageStackChangedListener = [];
-        
-        % Handle frame change events.
-        frameChangedListener = [];
     end
     
-    events
-        % Notify when selected spot changes.
-        SelectedSpotChanged
+    properties (Access = private)
+        imageStackChangedListener = event.listener.empty;
+        frameChangedListener = event.listener.empty;
+        selectedImageChangedListener = event.listener.empty;
+        spotsChangedListener = event.listener.empty;
+        selectedSpotChangedListener = event.listener.empty;
     end
     
     methods
         function obj = ChannelImageViewer(parent)
-            %CHANNELIMAGEVIEWER Constructor
+            %CHANNELIMAGEVIEWER Constructor.
             
             % requires a parent graphics object
             % will resize itself to its parent when the containing figure
@@ -67,6 +59,7 @@ classdef ChannelImageViewer < ImageStackViewer
                 addToolbarExplorationButtons(parent); % old style
             end
             
+            % ImageStackViewer constructor.
             obj@ImageStackViewer(parent);
             
             % change info text to a pushbutton
@@ -122,19 +115,36 @@ classdef ChannelImageViewer < ImageStackViewer
             % set handle to channel and update displayed image
             obj.channel = channel;
             obj.imageAxes.YLabel.String = channel.label;
-            if ~isempty(channel.images)
+            % show selected image frame
+            if channel.selectedImageFrameIndex
+                obj.frameSlider.Value = channel.selectedImageFrameIndex;
+            end
+            if ~isempty(channel.selectedImage) && any(channel.images == channel.selectedImage)
+                obj.imageStack = channel.selectedImage;
+            elseif ~isempty(channel.images)
                 obj.imageStack = channel.images(1);
             else
-                obj.imageStack = ImageStack();
+                obj.imageStack = ImageStack;
             end
+            % update spots
             obj.updateSpotMarkers();
-        end
-        
-        function set.selectedSpot(obj, spot)
-            % set handle to selected spot
-            obj.selectedSpot = spot;
             obj.updateSelectedSpotMarker();
-            notify(obj, 'SelectedSpotChanged');
+            % update listeners
+            if ~isempty(obj.selectedImageChangedListener)
+                delete(obj.selectedImageChangedListener);
+            end
+            obj.selectedImageChangedListener = ...
+                addlistener(obj.channel, 'SelectedImageChanged', @(varargin) obj.onSelectedImageChanged());
+            if ~isempty(obj.spotsChangedListener)
+                delete(obj.spotsChangedListener);
+            end
+            obj.spotsChangedListener = ...
+                addlistener(obj.channel, 'SpotsChanged', @(varargin) obj.updateSpotMarkers());
+            if ~isempty(obj.selectedSpotChangedListener)
+                delete(obj.selectedSpotChangedListener);
+            end
+            obj.selectedSpotChangedListener = ...
+                addlistener(obj.channel, 'SelectedSpotChanged', @(varargin) obj.updateSelectedSpotMarker());
         end
         
         function set.overlayChannelImageViewer(obj, viewer)
@@ -154,11 +164,17 @@ classdef ChannelImageViewer < ImageStackViewer
         
         function onImageStackChanged(obj)
             %ONIMAGESTACKCHANGED Handle image stack changed event.
-            obj.updateOtherViewersOverlaidWithThisViewer();
+            obj.channel.selectedImage = obj.imageStack;
         end
         
         function onFrameChanged(obj)
             %ONFRAMECHANGED Handle frame changed event.
+            obj.channel.selectedImageFrameIndex = obj.getCurrentFrameIndex();
+            obj.updateOtherViewersOverlaidWithThisViewer();
+        end
+        
+        function onSelectedImageChanged(obj)
+            obj.imageStack = obj.channel.selectedImage;
             obj.updateOtherViewersOverlaidWithThisViewer();
         end
         
@@ -204,10 +220,12 @@ classdef ChannelImageViewer < ImageStackViewer
                     h = size(obj.imageFrame.CData,1);
                     obj.imageFrame.XData = [1 w];
                     obj.imageFrame.YData = [1 h];
-                    obj.frameSlider.Value = t;
+                    if obj.imageStack.numFrames() > 1
+                        obj.frameSlider.Value = t;
+                        notify(obj, 'FrameChanged');
+                    end
                 end
                 obj.updateInfoText();
-                notify(obj, 'FrameChanged');
             catch
                 % show frame as ususal
                 obj.showFrame@ImageStackViewer(t);
@@ -235,14 +253,13 @@ classdef ChannelImageViewer < ImageStackViewer
                 'Callback', @obj.renameChannel);
             
             nimages = numel(obj.channel.images);
-            selectedImageIndex = obj.getSelectedImageIndex();
             if nimages > 1
                 selectImageMenu = uimenu(menu, 'Label', 'Select Image', ...
                     'Separator', 'on');
-                for i = 1:nimages
-                    uimenu(selectImageMenu, 'Label', obj.channel.images(i).getLabelWithSizeInfo(), ...
-                        'Checked', i == selectedImageIndex, ...
-                        'Callback', @(varargin) obj.selectImage(i));
+                for image = obj.channel.images
+                    uimenu(selectImageMenu, 'Label', image.getLabelWithSizeInfo(), ...
+                        'Checked', isequal(image, obj.channel.selectedImage), ...
+                        'Callback', @(varargin) obj.channel.setSelectedImage(image));
                 end
             end
             
@@ -263,11 +280,11 @@ classdef ChannelImageViewer < ImageStackViewer
             removeImageMenu = uimenu(menu, 'Label', 'Remove Image');
             for i = 1:nimages
                 uimenu(removeImageMenu, 'Label', obj.channel.images(i).getLabelWithSizeInfo(), ...
-                    'Checked', i == selectedImageIndex, ...
+                    'Checked', isequal(obj.channel.images(i), obj.channel.selectedImage), ...
                     'Callback', @(varargin) obj.removeImage(i, true));
             end
             
-            otherChannels = obj.channel.getOtherChannelsInExperiment();
+            otherChannels = obj.channel.getOtherChannelsInParentExperiment();
             if ~isempty(otherChannels)
                 overlayMenu = uimenu(menu, 'Label', 'Overlay Channel', ...
                     'Separator', 'on');
@@ -344,7 +361,7 @@ classdef ChannelImageViewer < ImageStackViewer
                 'Callback', @(varargin) obj.findSpots());
             
             uimenu(menu, 'Label', 'Copy Aligned Spots to all Channels', ...
-                'Callback', @(varargin) obj.copyAlignedSpotsToAllOtherChannels());
+                'Callback', @(varargin) obj.channel.copyAlignedSpotsToAllOtherChannels());
             
             uimenu(menu, 'Label', 'Clear Spots', ...
                 'Callback', @(varargin) obj.clearSpots());
@@ -370,12 +387,10 @@ classdef ChannelImageViewer < ImageStackViewer
                 return
             end
             
-            nimages = numel(obj.channel.images);
-            selectedImageIndex = obj.getSelectedImageIndex();
-            for i = 1:nimages
-                uimenu(menu, 'Label', obj.channel.images(i).getLabelWithSizeInfo(), ...
-                    'Checked', i == selectedImageIndex, ...
-                    'Callback', @(varargin) obj.selectImage(i));
+            for image = obj.channel.images
+                uimenu(menu, 'Label', image.getLabelWithSizeInfo(), ...
+                    'Checked', isequal(image, obj.channel.selectedImage), ...
+                    'Callback', @(varargin) obj.channel.setSelectedImage(image));
             end
         end
         
@@ -387,13 +402,12 @@ classdef ChannelImageViewer < ImageStackViewer
                 % select spot
                 idx = obj.spotIndexAt(x, y);
                 if idx
-                    obj.selectedSpot = obj.channel.spots(idx);
+                    obj.channel.selectedSpot = obj.channel.spots(idx);
                 else
                     clickSpot = Spot;
                     clickSpot.xy = [x y];
-                    obj.selectedSpot = clickSpot;
+                    obj.channel.selectedSpot = clickSpot;
                 end
-                obj.updateSelectedSpotMarker();
             elseif event.Button == 2 % middle
             elseif event.Button == 3 % right
                 % popup menu
@@ -464,7 +478,7 @@ classdef ChannelImageViewer < ImageStackViewer
             obj.channel.images = [obj.channel.images newImage];
             obj.imageStack = newImage;
             [~, newImage.label, ~] = fileparts(newImage.filepath);
-            obj.editImageInfo();
+            obj.renameImage();
         end
         
         function reloadImage(obj, varargin)
@@ -473,24 +487,17 @@ classdef ChannelImageViewer < ImageStackViewer
             obj.imageStack = obj.imageStack;
         end
         
-        function selectImage(obj, idx)
-            %SELECTIMAGE Set selected image stack.
-            obj.imageStack = obj.channel.images(idx);
-        end
-        
-        function idx = getSelectedImageIndex(obj)
-            %GETSELECTEDIMAGEINDEX Return index of selected image stack.
-            idx = 0;
-            for i = 1:numel(obj.channel.images)
-                if obj.imageStack == obj.channel.images(i)
-                    idx = i;
+        function removeImage(obj, idx, ask)
+            %REMOVEIMAGE Delete image stack(s).
+            if ~exist('idx', 'var') || isempty(idx)
+                if isempty(obj.channel.selectedImage)
+                    return
+                end
+                idx = find(obj.channel.images == obj.channel.selectedImage);
+                if isempty(idx)
                     return
                 end
             end
-        end
-        
-        function removeImage(obj, idx, ask)
-            %REMOVEIMAGE Delete image stack(s).
             if exist('ask', 'var') && ask
                 if questdlg(['Remove image ' char(obj.channel.images(idx).label) '?'], ...
                         'Remove image?', ...
@@ -498,18 +505,23 @@ classdef ChannelImageViewer < ImageStackViewer
                     return
                 end
             end
+            if isequal(obj.channel.selectedImage, obj.channel.images(idx))
+                nimages = numel(obj.channel.images);
+                if nimages > idx
+                    obj.channel.selectedImage = obj.channel.images(idx+1);
+                elseif idx > 1
+                    obj.channel.selectedImage = obj.channel.images(idx-1);
+                else
+                    obj.channel.selectedImage = ImageStack.empty;
+                end
+            end
             delete(obj.channel.images(idx));
             obj.channel.images(idx) = [];
-            if isempty(obj.channel.images)
-                obj.imageStack = ImageStack;
-            else
-                obj.imageStack = obj.channel.images(min(idx, numel(obj.channel.images)));
-            end
         end
         
         function renameImage(obj, varargin)
             %RENAMEIMAGE Edit selected image stack label.
-            if ~obj.getSelectedImageIndex()
+            if isempty(obj.imageStack)
                 return
             end
             answer = inputdlg( ...
@@ -711,12 +723,12 @@ classdef ChannelImageViewer < ImageStackViewer
         
         function updateSelectedSpotMarker(obj)
             %UPDATESELECTEDSPOTMARKER Update graphics to show selected spot location.
-            if isempty(obj.selectedSpot)
+            if isempty(obj.channel.selectedSpot)
                 obj.selectedSpotMarker.XData = nan;
                 obj.selectedSpotMarker.YData = nan;
             else
-                obj.selectedSpotMarker.XData = obj.selectedSpot.xy(1);
-                obj.selectedSpotMarker.YData = obj.selectedSpot.xy(2);
+                obj.selectedSpotMarker.XData = obj.channel.selectedSpot.xy(1);
+                obj.selectedSpotMarker.YData = obj.channel.selectedSpot.xy(2);
             end
         end
         
@@ -779,25 +791,6 @@ classdef ChannelImageViewer < ImageStackViewer
                 warndlg('Aligning spots not yet implemented.', 'Coming Soon');
             elseif method == "identical"
                 obj.channel.alignedTo.registration = ImageRegistration;
-            end
-        end
-        
-        function copyAlignedSpotsToAllOtherChannels(obj)
-            otherChannels = obj.channel.getOtherChannelsInExperiment();
-            xy = vertcat(obj.channel.spots.xy);
-            nspots = numel(obj.channel.spots);
-            for channel = otherChannels
-                cxy = channel.getAlignedSpotsInLocalCoords(obj.channel, xy);
-                channel.spots = Spot.empty;
-                channel.spots(nspots,1) = Spot;
-                for i = 1:nspots
-                    channel.spots(i,1).xy = cxy(i,:);
-                end
-            end
-            if ~isempty(obj.experimentViewer)
-                for viewer = obj.experimentViewer.channelImageViewers
-                    viewer.updateSpotMarkers();
-                end
             end
         end
     end

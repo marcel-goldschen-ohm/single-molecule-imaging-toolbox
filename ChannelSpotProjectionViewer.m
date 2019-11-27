@@ -4,15 +4,15 @@ classdef ChannelSpotProjectionViewer < handle
     
     properties
         % Channel handle.
-        channel = Channel();
+        channel = Channel;
         
-        % Handle to the selected spot.
-        % If it's NOT in the channel's list of spots, it will reflect the
-        % user's last click position within the image axes.
-        selectedSpot = Spot.empty;
-        
-        % handle to image stack used for spot projections
-        selectedImageStack = ImageStack.empty;
+%         % Handle to the selected spot.
+%         % If it's NOT in the channel's list of spots, it will reflect the
+%         % user's last click position within the image axes.
+%         selectedSpot = Spot.empty;
+%         
+%         % handle to image stack used for spot projections
+%         selectedImageStack = ImageStack.empty;
         
         % Bounding box in which to arrange items within Parent.
         % [] => fill Parent container.
@@ -32,9 +32,12 @@ classdef ChannelSpotProjectionViewer < handle
         
         % Handle to viewer for channel's parent experiment.
         experimentViewer = ExperimentViewer.empty;
-        
-        selectedSpotChangedListener = [];
-        resizeListener = [];
+    end
+    
+    properties (Access = private)
+        resizeListener = event.listener.empty;
+        selectedSpotChangedListener = event.listener.empty;
+        selectedProjectionImageStackChangedListener = event.listener.empty;
     end
     
     properties (Dependent)
@@ -107,25 +110,27 @@ classdef ChannelSpotProjectionViewer < handle
         function set.channel(obj, channel)
             obj.channel = channel;
             obj.projAxes.YLabel.String = channel.label;
-            obj.selectedSpot = Spot.empty;
-            obj.selectedImageStack = ImageStack.empty;
-            for imstack = channel.images
-                if imstack.numFrames() > 1
-                    obj.selectedImageStack = imstack;
-                    break
-                end
+            obj.channel.selectedProjectionImageStack = obj.channel.selectedProjectionImageStack;
+            obj.onSelectedProjectionImageStackChanged();
+            if ~isempty(obj.selectedSpotChangedListener)
+                delete(obj.selectedSpotChangedListener);
             end
+            obj.selectedSpotChangedListener = ...
+                addlistener(obj.channel, 'SelectedSpotChanged', @(varargin) obj.updateProjection());
+            if ~isempty(obj.selectedProjectionImageStackChangedListener)
+                delete(obj.selectedProjectionImageStackChangedListener);
+            end
+            obj.selectedProjectionImageStackChangedListener = ...
+                addlistener(obj.channel, 'SelectedProjectionImageStackChanged', @(varargin) obj.onSelectedProjectionImageStackChanged());
         end
         
-        function set.selectedSpot(obj, spot)
-            obj.selectedSpot = spot;
-            if ~isprop(obj, 'projLine') || ~isgraphics(obj.projLine)
-                return
-            end
+        function updateProjection(obj)
+            spot = obj.channel.selectedSpot;
             if ~isempty(spot)
                 % update projection
-                if ~isempty(obj.selectedImageStack) && ~isempty(obj.selectedImageStack.data)
-                    spot.updateProjection(obj.selectedImageStack);
+                imstack = obj.channel.selectedProjectionImageStack;
+                if ~isempty(imstack) && ~isempty(imstack.data)
+                    spot.updateProjection(imstack);
                 end
                 % show projection
                 y = spot.tproj.adjustedData;
@@ -141,25 +146,14 @@ classdef ChannelSpotProjectionViewer < handle
             obj.projLine.YData = nan;
         end
         
-        function onSelectedSpotChanged(obj, src, varargin)
-            if isa(src, 'ChannelImageViewer')
-                obj.selectedSpot = src.selectedSpot;
-            end
-        end
-        
-        function set.selectedImageStack(obj, imstack)
-            obj.selectedImageStack = imstack;
+        function onSelectedProjectionImageStackChanged(obj)
+            imstack = obj.channel.selectedProjectionImageStack;
             if isempty(imstack)
                 obj.infoText.String = '';
             else
                 obj.infoText.String = imstack.getLabelWithSizeInfo();
             end
-            ... % TODO: update projection
-        end
-        
-        function setSelectedImageStack(obj, imstack)
-            % for use in callbacks
-            obj.selectedImageStack = imstack;
+            obj.updateProjection();
         end
         
         function parent = get.Parent(obj)
@@ -275,32 +269,34 @@ classdef ChannelSpotProjectionViewer < handle
             menu.Position(1:2) = get(fig, 'CurrentPoint');
             
             projectionImageStackMenu = uimenu(menu, 'Label', 'Projection Image Stack');
+            selstack = obj.channel.selectedProjectionImageStack;
             for i = 1:numel(obj.channel.images)
                 imstack = obj.channel.images(i);
                 if imstack.numFrames() > 1
                     uimenu(projectionImageStackMenu, 'Label', imstack.getLabelWithSizeInfo(), ...
-                        'Checked', ~isempty(obj.selectedImageStack) && obj.selectedImageStack == imstack, ...
-                        'Callback', @(varargin) obj.setSelectedImageStack(imstack));
+                        'Checked', ~isempty(selstack) && selstack == imstack, ...
+                        'Callback', @(varargin) obj.channel.setSelectedProjectionImageStack(imstack));
                 end
             end
         end
         
         function infoTextPressed(obj)
-            menu = obj.getSelectedImageStackMenu();
+            menu = obj.getSelectedProjectionImageStackMenu();
             menu.Position(1:2) = obj.infoText.Position(1:2);
             menu.Visible = 1;
         end
         
-        function menu = getSelectedImageStackMenu(obj)
+        function menu = getSelectedProjectionImageStackMenu(obj)
             fig = ancestor(obj.Parent, 'Figure');
             menu = uicontextmenu(fig);
             
+            selstack = obj.channel.selectedProjectionImageStack;
             for i = 1:numel(obj.channel.images)
                 imstack = obj.channel.images(i);
                 if imstack.numFrames() > 1
                     uimenu(menu, 'Label', imstack.getLabelWithSizeInfo(), ...
-                        'Checked', ~isempty(obj.selectedImageStack) && obj.selectedImageStack == imstack, ...
-                        'Callback', @(varargin) obj.setSelectedImageStack(imstack));
+                        'Checked', ~isempty(selstack) && selstack == imstack, ...
+                        'Callback', @(varargin) obj.channel.setSelectedProjectionImageStack(imstack));
                 end
             end
         end

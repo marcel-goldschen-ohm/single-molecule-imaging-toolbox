@@ -58,9 +58,9 @@ classdef (ConstructOnLoad) ImageStack < handle
             nframes = size(obj.data,4);
         end
         
-        function frame = getFrameData(obj, t)
+        function frameData = getFrameData(obj, t)
             %FRAME Return the pixel data for a single image frame
-            frame = obj.data(:,:,:,t);
+            frameData = obj.data(:,:,:,t);
         end
         
         function label = getLabelWithSizeInfo(obj)

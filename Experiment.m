@@ -1,7 +1,6 @@
 classdef Experiment < handle
     %EXPERIMENT Data for an entire single-molecule imaging experiment.
-    %   - Array of channels with associated image stacks and spots.
-    %   - Aligned spots across all channels.
+    %   Mostly just an array of channels with associated images and spots.
     %
     %	Created by Marcel Goldschen-Ohm
     %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
@@ -9,28 +8,52 @@ classdef Experiment < handle
     properties
         notes = '';
         
-        % array of channel data
-        channels = Channel.empty;
+        % Row vector of channels.
+        channels = Channel.empty(1,0);
         
-        % [#spots x #channels] matrix of spots
-        alignedSpots = Spot.empty;
+        % Flag indicating whether spots are aligned across channels or not.
+        areSpotsAlignedAcrossChannels = false;
     end
     
-    properties (Access = private)
-        % working dir
-        wd = pwd();
+%     properties (Access = private)
+%         % working dir
+%         wd = pwd();
+%     end
+    
+    events
+        ChannelsChanged
     end
     
     methods
         function obj = Experiment()
-            %EXPERIMENT Construct an instance of this class
-            %   Detailed explanation goes here
+            %EXPERIMENT Constructor.
         end
         
-        function addChannel(obj, channel)
-            obj.channels = [obj.channels channel];
-            channel.experiment = obj;
+        function set.channels(obj, channels)
+            % Make sure each channel's parentExperiment refers to obj.
+            obj.channels = channels;
+            for channel = channels
+                channel.parentExperiment = obj;
+            end
+            notify(obj, 'ChannelsChanged');
         end
+        
+%         function tf = get.areSpotsAlignedAcrossChannels(obj)
+%             tf = false;
+%             if ~obj.areSpotsAlignedAcrossChannels
+%                 return
+%             end
+%             % obj.areSpotsAlignedAcrossChannels == true
+%             % double check that all channels have the same number of spots
+%             nchannels = numel(obj.channels);
+%             nspots = zeros(1, nchannels);
+%             for c = 1:nchannels
+%                 nspots(c) = numel(obj.channels(c).spots);
+%             end
+%             if all(nspots > 0) && all(diff(nspots) == 0)
+%                 tf = true;
+%             end
+%         end
     end
     
     methods (Static)
