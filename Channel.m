@@ -23,6 +23,9 @@ classdef Channel < handle
         % Parent experiment handle.
         parentExperiment = Experiment.empty;
         
+        % BELOW PROPERTIES ARE PRIMARILY FOR THE USER INTERFACE
+        % THEY MOSTLY JUST REFER TO THE ABOVE DATA PROPERTIES
+        
         % Selected image (and frame index). Should reference one of the
         % channel's images.
         selectedImage = ImageStack.empty;
@@ -43,7 +46,13 @@ classdef Channel < handle
         selectedProjectionImageStack = ImageStack.empty;
     end
     
+    properties (Dependent)
+        selectedImageFrameData
+    end
+    
     events
+        % EVENTS ARE PRIMARILY FOR THE USER INTERFACE
+        LabelChanged
         ImagesChanged
         SpotsChanged
         AlignedToChanged
@@ -116,6 +125,15 @@ classdef Channel < handle
             end
         end
         
+        function frameData = get.selectedImageFrameData(obj)
+            frameData = [];
+            if isempty(obj.selectedImage) || obj.selectedImage.numFrames() == 0
+                return
+            end
+            t = max(1, min(obj.selectedImageFrameIndex, obj.selectedImage.numFrames()));
+            frameData = obj.selectedImage.getFrameData(t);
+        end
+        
         function set.selectedSpot(obj, h)
             obj.selectedSpot = h;
             notify(obj, 'SelectedSpotChanged');
@@ -164,6 +182,9 @@ classdef Channel < handle
         end
         
         function set.selectedProjectionImageStack(obj, h)
+            if isequal(obj.selectedProjectionImageStack, h)
+                return
+            end
             if ~isempty(h) && ~isempty(obj.images) && any(obj.images == h)
                 if ~isequal(obj.selectedProjectionImageStack, h)
                     obj.selectedProjectionImageStack = h;
@@ -179,9 +200,9 @@ classdef Channel < handle
         end
         
         function selectFirstValidProjectionImageStack(obj)
-            for im = obj.images
-                if im.numFrames() > 1
-                    obj.selectedProjectionImageStack = im;
+            for image = obj.images
+                if image.numFrames() > 1
+                    obj.selectedProjectionImageStack = image;
                     return
                 end
             end
@@ -197,6 +218,219 @@ classdef Channel < handle
             channels = Channel.empty(1,0);
             if ~isempty(obj.parentExperiment)
                 channels = setdiff(obj.parentExperiment.channels, obj);
+            end
+        end
+        
+        function editLabel(obj)
+            answer = inputdlg( ...
+                {'label'}, ...
+                'Channel Label', 1, ...
+                {char(obj.label)});
+            if isempty(answer)
+                return
+            end
+            obj.label = string(answer{1});
+            notify(obj, 'LabelChanged');
+        end
+        
+        function loadNewImage(obj)
+            %LOADNEWIMAGE Load new image stack from file.
+            newImage = ImageStack;
+            newImage.load('', '', [], [], true);
+            [~, newImage.label, ~] = fileparts(newImage.filepath);
+            obj.images = [obj.images newImage];
+            obj.selectedImage = newImage;
+            obj.selectedImage.editLabel();
+        end
+        
+        function reloadSelectedImage(obj)
+            %RELOADSELECTEDIMAGE Reload selected image stack from file.
+            if isempty(obj.selectedImage)
+                return
+            end
+            obj.selectedImage.reload();
+        end
+        
+        function removeImageAt(obj, idx, ask)
+            %REMOVEIMAGEAT Delete obj.images(idx).
+            if ~exist('idx', 'var') || isempty(idx)
+                if isempty(obj.selectedImage)
+                    return
+                end
+                idx = find(obj.images == obj.selectedImage);
+                if isempty(idx)
+                    return
+                end
+            end
+            if exist('ask', 'var') && ask
+                if questdlg(['Remove image ' char(obj.images(idx).label) '?'], ...
+                        'Remove image?', ...
+                        'OK', 'Cancel', 'Cancel') == "Cancel"
+                    return
+                end
+            end
+            if isequal(obj.selectedImage, obj.images(idx))
+                nimages = numel(obj.images);
+                if nimages > idx
+                    obj.selectedImage = obj.images(idx+1);
+                elseif idx > 1
+                    obj.selectedImage = obj.images(idx-1);
+                else
+                    obj.selectedImage = ImageStack.empty;
+                end
+            end
+            delete(obj.images(idx));
+            obj.images(idx) = [];
+        end
+        
+        function duplicate(obj, frames)
+            %DUPLICATE Duplicate frames of selected image stack.
+            %   Append duplicate image to channel's image list.
+            if ~exist('frames', 'var')
+                frames = [];
+            end
+            try
+                newImage = obj.imageStack.duplicate(frames);
+                if ~isempty(newImage.data)
+                    obj.channel.images = [obj.channel.images newImage];
+                    obj.imageStack = newImage;
+                end
+            catch
+            end
+        end
+        
+        function zproject(obj, frames, method)
+            %ZPROJECT Z-Project frames of selected image stack.
+            %   Append z-projected image to channel's image list.
+            if ~exist('frames', 'var')
+                frames = [];
+            end
+            if ~exist('method', 'var')
+                method = '';
+            end
+            try
+                newImage = obj.imageStack.zproject(frames, method, obj.imageFrame);
+                if ~isempty(newImage.data)
+                    obj.channel.images = [obj.channel.images newImage];
+                    obj.imageStack = newImage;
+                else
+                    obj.imageStack = obj.imageStack;
+                end
+            catch
+                obj.imageStack = obj.imageStack;
+            end
+        end
+        
+        function gaussFilter(obj, sigma, applyToAllFrames)
+            %GAUSSFILTER Apply Gaussian filter to selected image (stack).
+            if ~exist('sigma', 'var')
+                sigma = [];
+            end
+            if ~exist('applyToAllFrames', 'var')
+                applyToAllFrames = [];
+            end
+            try
+                nframes = obj.imageStack.numFrames();
+                if nframes > 1
+                    frame = max(1, min(obj.frameSlider.Value, nframes));
+                else
+                    frame = 1;
+                end
+                obj.imageStack.gaussFilter(frame, sigma, obj.imageFrame, applyToAllFrames);
+            catch
+            end
+            obj.imageStack = obj.imageStack;
+        end
+        
+        function tophatFilter(obj, diskRadius, applyToAllFrames)
+            %TOPHATFILTER Apply tophat filter to selected image (stack).
+            if ~exist('diskRadius', 'var')
+                diskRadius = [];
+            end
+            if ~exist('applyToAllFrames', 'var')
+                applyToAllFrames = [];
+            end
+            try
+                nframes = obj.imageStack.numFrames();
+                if nframes > 1
+                    frame = max(1, min(obj.frameSlider.Value, nframes));
+                else
+                    frame = 1;
+                end
+                obj.imageStack.tophatFilter(frame, diskRadius, obj.imageFrame, applyToAllFrames);
+            catch
+            end
+            obj.imageStack = obj.imageStack;
+        end
+        
+        function threshold(obj, threshold)
+            %THRESHOLD Threshold selected image stack frame.
+            %   Append thresholded mask to channel's image list.
+            if ~exist('threshold', 'var')
+                threshold = [];
+            end
+            try
+                nframes = obj.imageStack.numFrames();
+                if nframes > 1
+                    frame = max(1, min(obj.frameSlider.Value, nframes));
+                else
+                    frame = 1;
+                end
+                newImage = obj.imageStack.threshold(frame, threshold, obj.imageFrame);
+                if ~isempty(newImage.data)
+                    obj.channel.images = [obj.channel.images newImage];
+                    obj.imageStack = newImage;
+                else
+                    obj.imageStack = obj.imageStack;
+                end
+            catch
+                obj.imageStack = obj.imageStack;
+            end
+        end
+        
+        function alignToChannel(obj, channel, method, moving, fixed)
+            %ALIGNTOCHANNEL Align obj --> channel by images or spots
+            if ~isempty(channel) && ~isempty(channel.alignedTo.channel) && channel.alignedTo.channel == obj
+                warndlg({[char(channel.label) ' is already aligned to ' char(obj.label)], ...
+                    ['Aligning ' char(obj.label) ' to ' char(channel.label) ' would result in a cyclic alignment loop.'], ...
+                    'This is not allowed.'}, ...
+                    'Cyclic Alignment Attempt');
+                return
+            end
+            obj.alignedTo.channel = channel;
+            obj.alignedTo.registration = ImageRegistration;
+            if isempty(channel)
+                return
+            end
+            if ~exist('method', 'var') || isempty(method)
+                methods = {'images', 'spots', 'identical'};
+                [idx, tf] = listdlg('PromptString', 'Alignment Method',...
+                    'SelectionMode', 'single', ...
+                    'ListString', methods);
+                if ~tf
+                    return
+                end
+                method = methods{idx};
+            end
+            if method == "images"
+                if ~exist('moving', 'var') || isempty(moving)
+                    moving = obj.selectedImageFrameData;
+                end
+                if ~exist('fixed', 'var') || isempty(fixed)
+                    fixed = channel.selectedImageFrameData;
+                end
+                if isempty(moving) || isempty(fixed)
+                    warndlg('First select the image frames to be aligned.', 'No selected image frames.');
+                    return
+                end
+                moving = imadjust(uint16(moving));
+                fixed = imadjust(uint16(fixed));
+                obj.alignedTo.registration.registerImages(moving, fixed);
+            elseif method == "spots"
+                % TODO
+                warndlg('Aligning spots not yet implemented.', 'Coming Soon');
+            elseif method == "identical"
+                obj.alignedTo.registration = ImageRegistration;
             end
         end
         
@@ -252,6 +486,15 @@ classdef Channel < handle
                     newSpots(i,1).xy = cxy(i,:);
                 end
                 channel.spots = newSpots;
+            end
+        end
+        
+        function menu = getSelectImageMenu(obj)
+            menu = uimenu('Label', 'Select Image');
+            for image = obj.images
+                uimenu(menu, 'Label', image.getLabelWithSizeInfo(), ...
+                    'Checked', isequal(image, obj.selectedImage), ...
+                    'Callback', @(varargin) obj.setSelectedImage(image));
             end
         end
     end

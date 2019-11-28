@@ -282,7 +282,7 @@ classdef ExperimentViewer < handle
         end
         
         function addChannel(obj)
-            obj.experiment.addChannel(Channel());
+            obj.experiment.channels = [obj.experiment.channels Channel()];
             
             viewer = ChannelImageViewer(obj.Parent);
             viewer.channel = obj.experiment.channels(end);

@@ -40,6 +40,7 @@ classdef ChannelImageViewer < ImageStackViewer
     end
     
     properties (Access = private)
+        channelLabelChangedListener = event.listener.empty;
         imageStackChangedListener = event.listener.empty;
         frameChangedListener = event.listener.empty;
         selectedImageChangedListener = event.listener.empty;
@@ -130,6 +131,11 @@ classdef ChannelImageViewer < ImageStackViewer
             obj.updateSpotMarkers();
             obj.updateSelectedSpotMarker();
             % update listeners
+            if ~isempty(obj.channelLabelChangedListener)
+                delete(obj.channelLabelChangedListener);
+            end
+            obj.channelLabelChangedListener = ...
+                addlistener(obj.channel, 'LabelChanged', @(varargin) obj.onChannelLabelChanged());
             if ~isempty(obj.selectedImageChangedListener)
                 delete(obj.selectedImageChangedListener);
             end
@@ -160,6 +166,14 @@ classdef ChannelImageViewer < ImageStackViewer
         function setOverlayColorChannels(obj, colors)
             % Only needed because setters aren't valid callbacks.
             obj.overlayColorChannels = colors;
+        end
+        
+        function onChannelLabelChanged(obj)
+            obj.imageAxes.YLabel.String = obj.channel.label;
+            obj.resize();
+%             if ~isempty(obj.experimentViewer)
+%                 obj.experimentViewer.refreshUi();
+%             end
         end
         
         function onImageStackChanged(obj)
@@ -250,7 +264,7 @@ classdef ChannelImageViewer < ImageStackViewer
             end
             
             uimenu(menu, 'Label', 'Rename Channel', ...
-                'Callback', @obj.renameChannel);
+                'Callback', @(varargin) obj.channel.editLabel());
             
             nimages = numel(obj.channel.images);
             if nimages > 1
@@ -348,11 +362,11 @@ classdef ChannelImageViewer < ImageStackViewer
                     'Separator', 'on');
                 uimenu(alignToMenu, 'Label', 'None', ...
                     'Checked', isempty(obj.channel.alignedTo.channel), ...
-                    'Callback', @(varargin) obj.alignToChannel(Channel.empty));
+                    'Callback', @(varargin) obj.channel.alignToChannel(Channel.empty));
                 for channel = otherChannels
                     uimenu(alignToMenu, 'Label', channel.label, ...
                         'Checked', ~isempty(obj.channel.alignedTo.channel) && (obj.channel.alignedTo.channel == channel), ...
-                        'Callback', @(varargin) obj.alignToChannel(channel));
+                        'Callback', @(varargin) obj.channel.alignToChannel(channel));
                 end
             end
             
@@ -448,26 +462,6 @@ classdef ChannelImageViewer < ImageStackViewer
                 if dpix > 5
                     idx = [];
                 end
-            end
-        end
-        
-        function renameChannel(obj, varargin)
-            %RENAMECHANNEL Edit channel label.
-            if isempty(obj.channel)
-                return
-            end
-            answer = inputdlg( ...
-                {'label'}, ...
-                'Channel Label', 1, ...
-                {char(obj.channel.label)});
-            if isempty(answer)
-                return
-            end
-            obj.channel.label = string(answer{1});
-            obj.imageAxes.YLabel.String = obj.channel.label;
-            obj.resize();
-            if ~isempty(obj.experimentViewer)
-                obj.experimentViewer.refreshUi();
             end
         end
         
@@ -744,54 +738,6 @@ classdef ChannelImageViewer < ImageStackViewer
                 end
             end
             obj.overlayChannelImageViewer = ChannelImageViewer.empty;
-        end
-        
-        function alignToChannel(obj, channel, method)
-            %ALIGNTOCHANNEL Align obj.channel --> channel by images or spots
-            if ~isempty(channel) && ~isempty(channel.alignedTo.channel) && channel.alignedTo.channel == obj.channel
-                warndlg({[char(channel.label) ' is already aligned to ' char(obj.channel.label)], ...
-                    ['Aligning ' char(obj.channel.label) ' to ' char(channel.label) ' would result in a cyclic alignment loop.'], ...
-                    'This is not allowed.'}, ...
-                    'Cyclic Alignment Attempt');
-                return
-            end
-            obj.channel.alignedTo.channel = channel;
-            obj.channel.alignedTo.registration = ImageRegistration;
-            if isempty(channel)
-                return
-            end
-            if ~exist('method', 'var') || isempty(method)
-                methods = {'images', 'spots', 'identical'};
-                [idx, tf] = listdlg('PromptString', 'Alignment Method',...
-                    'SelectionMode', 'single', ...
-                    'ListString', methods);
-                if ~tf
-                    return
-                end
-                method = methods{idx};
-            end
-            % get handles to ChannelImageViewers for channels to be aligned
-            movingViewer = obj;
-            idx = find(horzcat(obj.experimentViewer.channelImageViewers.channel) == channel, 1);
-            if ~idx
-                return
-            end
-            fixedViewer = obj.experimentViewer.channelImageViewers(idx);
-            if movingViewer == fixedViewer
-                return
-            end
-            if method == "images"
-                moving = movingViewer.getFrameData();
-                fixed = fixedViewer.getFrameData();
-                moving = imadjust(uint16(moving));
-                fixed = imadjust(uint16(fixed));
-                obj.channel.alignedTo.registration.registerImages(moving, fixed);
-            elseif method == "spots"
-                % TODO
-                warndlg('Aligning spots not yet implemented.', 'Coming Soon');
-            elseif method == "identical"
-                obj.channel.alignedTo.registration = ImageRegistration;
-            end
         end
     end
 end

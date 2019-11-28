@@ -33,6 +33,12 @@ classdef (ConstructOnLoad) ImageStack < handle
         ownData = true;
     end
     
+    events
+        % EVENTS ARE PRIMARILY FOR THE USER INTERFACE
+        LabelChanged
+        DataChanged
+    end
+    
     methods
         function obj = ImageStack()
             %IMAGESTACK Construct an instance of this class
@@ -82,6 +88,18 @@ classdef (ConstructOnLoad) ImageStack < handle
             else
                 label = sprintf('%s (%dx%dx%d)x%d', obj.label, w, h, c, t);
             end
+        end
+        
+        function editLabel(obj)
+            answer = inputdlg( ...
+                {'label'}, ...
+                'Image Label', 1, ...
+                {char(obj.label)});
+            if isempty(answer)
+                return
+            end
+            obj.label = string(answer{1});
+            notify(obj, 'LabelChanged');
         end
         
         function load(obj, filepath, prompt, frames, viewport, showOptionsDialog)
@@ -256,6 +274,7 @@ classdef (ConstructOnLoad) ImageStack < handle
             obj.viewport = viewport;
 
             % stop timer
+            notify(obj, 'DataChanged');
             toc
             disp('... Done.');
         end
@@ -513,6 +532,7 @@ classdef (ConstructOnLoad) ImageStack < handle
                     close(wb);
                 end
             end
+            notify(obj, 'DataChanged');
         end
         
         function tophatFilter(obj, frame, diskRadius, previewImage, applyToAllFrames)
@@ -570,6 +590,7 @@ classdef (ConstructOnLoad) ImageStack < handle
                     close(wb);
                 end
             end
+            notify(obj, 'DataChanged');
         end
         
         function newobj = threshold(obj, frame, threshold, previewImage)
