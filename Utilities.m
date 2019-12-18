@@ -8,7 +8,8 @@ classdef Utilities < handle
                 props = fieldnames(obj);
                 for k = 1:numel(props)
                     prop = char(props{k});
-                    if isfield(s, prop)
+                    metaprop = findprop(obj, prop);
+                    if isfield(s, prop) && ~metaprop.Dependent
                         try
                             if isstruct(obj.(prop))
                                 obj.(prop) = Utilities.makeStructArraysCompatible(s.(prop), obj.(prop));

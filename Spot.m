@@ -14,12 +14,11 @@ classdef Spot < handle
         % e.g. from regionprops() --> Area, Eccentricity, etc.
         props = struct.empty;
         
-        % tags can be used to group spots
-        % can be a comma-separated list of tags
-        tag = "";
+        % string array of tags
+        tags = string.empty;
         
         % used for projections, e.g. the spot PSF
-        projMask = logical([ ...
+        projectionMask = logical([ ...
             0 1 1 1 0; ...
             1 1 1 1 1; ...
             1 1 1 1 1; ...
@@ -28,12 +27,12 @@ classdef Spot < handle
             ]);
         
         % spot image intensity projection across time frames
-        tproj = SpotProjection();
+        projection = SpotProjection;
     end
     
     events
         LocationChanged
-        TagChanged
+        TagsChanged
         ProjectionChanged
     end
     
@@ -47,13 +46,27 @@ classdef Spot < handle
             notify(obj, 'LocationChanged');
         end
         
-        function set.tag(obj, tag)
-            obj.tag = tag;
-            notify(obj, 'TagChanged');
+        function set.tags(obj, tags)
+            if isempty(tags)
+                obj.tags = string.empty;
+            elseif isstring(tags) || ischar(tags)
+                obj.tags = Spot.str2arr(tags, ',');
+            else
+                obj.tags = tags;
+            end
+            notify(obj, 'TagsChanged');
         end
         
-        function set.tproj(obj, tproj)
-            obj.tproj = tproj;
+        function str = getTagsString(obj)
+            if isempty(obj.tags)
+                str = "";
+            else
+                str = strjoin(obj.tags, ",");
+            end
+        end
+        
+        function set.projection(obj, proj)
+            obj.projection = proj;
             notify(obj, 'ProjectionChanged');
         end
         
@@ -63,7 +76,7 @@ classdef Spot < handle
             end
             row0 = round(obj.xy(2));
             col0 = round(obj.xy(1));
-            mask = obj.projMask;
+            mask = obj.projectionMask;
             maskNRows = size(mask,1);
             maskNCols = size(mask,2);
             maskRow0 = ceil(maskNRows / 2);
@@ -80,18 +93,27 @@ classdef Spot < handle
                 cols(out) = [];
                 mask(:,out) = [];
             end
-            if isempty(mask)
-                obj.tproj.Time = [];
-                obj.tproj.Data = [];
+            masktot = sum(mask(:));
+            if isempty(mask) || masktot == 0
+                obj.projection.time = [];
+                obj.projection.data = [];
                 return
             end
-            nframes = imstack.numFrames();
-            obj.tproj.Time = reshape(1:nframes, [], 1);
-            obj.tproj.Data = reshape( ...
+            nframes = imstack.numFrames;
+            if isempty(imstack.frameIntervalSec)
+                obj.projection.time = []; %reshape(1:nframes, [], 1);
+                obj.projection.timeUnits = 'frames';
+            else
+                obj.projection.sampleInterval = imstack.frameIntervalSec;
+                obj.projection.time = []; %reshape(0:nframes-1, [], 1) .* imstack.frameIntervalSec;
+                obj.projection.timeUnits = 'seconds';
+            end
+            obj.projection.data = reshape( ...
                 sum(sum( ...
-                    double(imstack.data(rows,cols,1,:)) .* repmat(mask, [1 1 1 nframes]) ...
-                    , 1), 2) ./ numel(mask) ...
+                    double(imstack.data(rows,cols,:)) .* repmat(mask, [1 1 nframes]) ...
+                    , 1), 2) ./ masktot ...
                 , [], 1);
+            obj.projection.dataUnits = 'au';
             notify(obj, 'ProjectionChanged');
         end
     end
@@ -114,6 +136,24 @@ classdef Spot < handle
             y = int32(round(yy(in)));
             pixelsXY = [x y];
             pixelIndices = sub2ind(imageSize, y, x);
+        end
+        
+        function arr = str2arr(str, delim)
+            arr = string.empty;
+            if isempty(str)
+                return
+            end
+            if exist('delim', 'var') && ~isempty(delim)
+            	fields = strsplit(str, delim);
+            else
+            	fields = strsplit(str);
+            end
+            for field = fields
+                elem = strtrim(field);
+                if ~isempty(elem)
+                    arr = [arr string(elem)];
+                end
+            end
         end
     end
 end

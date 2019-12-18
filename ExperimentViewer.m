@@ -10,8 +10,7 @@ classdef ExperimentViewer < handle
         channelImageViewers = ChannelImageViewer.empty;
         channelSpotProjectionViewers = ChannelSpotProjectionViewer.empty;
         
-        loadDataBtn = gobjects(0);
-        saveDataBtn = gobjects(0);
+        menuBtn = gobjects(0);
         refreshUiBtn = gobjects(0);
         
         channelsListHeaderText = gobjects(0);
@@ -19,17 +18,39 @@ classdef ExperimentViewer < handle
         removeChannelsBtn = gobjects(0);
         channelsListBox = gobjects(0);
         
+        layoutHeaderText = gobjects(0);
         showImagesAndOrProjectionsBtnGroup = gobjects(0);
         showImagesBtn = gobjects(0);
         showProjectionsBtn = gobjects(0);
         showImagesAndProjectionsBtn = gobjects(0);
         
-%         selectedSpotChangedListeners = event.listener.empty;
+        spotsHeaderText = gobjects(0);
+        prevSpotBtn = gobjects(0);
+        nextSpotBtn = gobjects(0);
+        spotIndexEdit = gobjects(0);
+        spotTagsEdit = gobjects(0);
+        tagsMaskText = gobjects(0);
+        tagsMaskEdit = gobjects(0);
+        showSpotMarkersBtn = gobjects(0);
+        zoomOnSelectedSpotBtn = gobjects(0);
+        
+        idealizationHeaderText = gobjects(0);
+        idealizationMethodText = gobjects(0);
+        idealizationMethodPopup = gobjects(0);
+        showIdealizationBtn = gobjects(0);
+        autoComputeIdealizationBtn = gobjects(0);
+        idealizeBtn = gobjects(0);
+        idealizeAllBtn = gobjects(0);
+        
+        discThresholdAlphaText = gobjects(0);
+        discThresholdAlphaEdit = gobjects(0);
+        discInformationCriteriaText = gobjects(0);
+        discInformationCriteriaPopup = gobjects(0);
     end
     
     properties (Access = private)
-        resizeListener = [];
-        spotChangingLock = 0;
+        resizeListener = event.listener.empty;
+        selectedSpotIndexChangedListener = event.listener.empty;
     end
     
     properties (Dependent)
@@ -50,12 +71,14 @@ classdef ExperimentViewer < handle
                 addToolbarExplorationButtons(parent); % old style
             end
             
-            obj.loadDataBtn = uicontrol(parent, 'Style', 'pushbutton', ...
-                'String', 'Load', 'Callback', @(varargin) obj.loadData());
-            obj.saveDataBtn = uicontrol(parent, 'Style', 'pushbutton', ...
-                'String', 'Save', 'Callback', @(varargin) obj.saveData());
+            obj.menuBtn = uicontrol(parent, 'style', 'pushbutton', ...
+                'String', char(hex2dec('2630')), 'Position', [0 0 15 15], ...
+                'Tooltip', 'Main Menu', ...
+                'Callback', @(varargin) obj.menuBtnPressed());
             obj.refreshUiBtn = uicontrol(parent, 'Style', 'pushbutton', ...
-                'String', 'Refresh', 'Callback', @(varargin) obj.refreshUi());
+                'String', char(hex2dec('27f3')), ...
+                'Tooltip', 'Refresh UI', ...
+                'Callback', @(varargin) obj.refreshUi());
             
             obj.channelsListHeaderText = uicontrol(parent, 'Style', 'text', ...
                 'String', 'Channels', 'HorizontalAlignment', 'left', ...
@@ -69,6 +92,9 @@ classdef ExperimentViewer < handle
             obj.channelsListBox = uicontrol(parent, 'Style', 'listbox', ...
                 'Callback', @(varargin) obj.showChannels());
             
+            obj.layoutHeaderText = uicontrol(parent, 'Style', 'text', ...
+                'String', 'Layout', 'HorizontalAlignment', 'left', ...
+                'ForegroundColor', [1 1 1], 'BackgroundColor', [0 0 0]);
             obj.showImagesAndOrProjectionsBtnGroup = uibuttongroup(parent, ...
                 'BorderType', 'none', 'Units', 'pixels');
             obj.showImagesBtn = uicontrol(obj.showImagesAndOrProjectionsBtnGroup, ...
@@ -81,17 +107,132 @@ classdef ExperimentViewer < handle
                 'Style', 'togglebutton', 'String', 'Img & Proj', 'Value', 1, ...
                 'Callback', @(varargin) obj.resize());
             
+            obj.spotsHeaderText = uicontrol(parent, 'Style', 'text', ...
+                'String', 'Spots', 'HorizontalAlignment', 'left', ...
+                'ForegroundColor', [1 1 1], 'BackgroundColor', [0 0 0]);
+            obj.prevSpotBtn = uicontrol(parent, 'Style', 'pushbutton', ...
+                'String', '<', 'Callback', @(varargin) obj.prevSpot());
+            obj.nextSpotBtn = uicontrol(parent, 'Style', 'pushbutton', ...
+                'String', '>', 'Callback', @(varargin) obj.nextSpot());
+            obj.spotIndexEdit = uicontrol(parent, 'Style', 'edit', ...
+                'Callback', @(varargin) obj.goToSpot());
+            obj.spotTagsEdit = uicontrol(parent, 'Style', 'edit', ...
+                'Tooltip', 'spot tags', ...
+                'Callback', @(varargin) obj.onSpotTagsEdited());
+            obj.tagsMaskText = uicontrol(parent, 'Style', 'text', ...
+                'String', 'tag mask', 'HorizontalAlignment', 'right');
+            obj.tagsMaskEdit = uicontrol(parent, 'Style', 'edit', ...
+                'Tooltip', 'navigate only spots with any of these tags');
+            obj.showSpotMarkersBtn = uicontrol(parent, 'Style', 'togglebutton', ...
+                'String', 'show markers', 'Value', 1, ...
+                'Tooltip', 'show all spots on images', ...
+                'Callback', @(varargin) obj.showSpotMarkersBtnPressed());
+            obj.zoomOnSelectedSpotBtn = uicontrol(parent, 'Style', 'togglebutton', ...
+                'String', 'zoom on', 'Value', 0, ...
+                'Tooltip', 'zoom images on selected spots', ...
+                'Callback', @(varargin) obj.zoomOnSelectedSpotBtnPressed());
+            
+            obj.idealizationHeaderText = uicontrol(parent, 'Style', 'text', ...
+                'String', 'Idealization', 'HorizontalAlignment', 'left', ...
+                'ForegroundColor', [1 1 1], 'BackgroundColor', [0 0 0]);
+            obj.showIdealizationBtn = uicontrol(parent, 'Style', 'togglebutton', ...
+                'String', 'show', 'Value', 1, ...
+                'Tooltip', 'show projection idealization');
+            obj.autoComputeIdealizationBtn = uicontrol(parent, 'Style', 'togglebutton', ...
+                'String', 'auto', 'Value', 1, ...
+                'Tooltip', 'auto compute idealization');
+            obj.idealizeBtn = uicontrol(parent, 'Style', 'pushbutton', ...
+                'String', 'idealize', ...
+                'Tooltip', 'idealize current spot');
+            obj.idealizeAllBtn = uicontrol(parent, 'Style', 'pushbutton', ...
+                'String', 'idealize all', ...
+                'Tooltip', 'idealize all spots');
+            obj.idealizationMethodText = uicontrol(parent, 'Style', 'text', ...
+                'String', 'method', 'HorizontalAlignment', 'right');
+            obj.idealizationMethodPopup = uicontrol(parent, 'Style', 'popupmenu', ...
+                'String', {'DISC'}, 'Value', 1);
+            
+            obj.discThresholdAlphaText = uicontrol(parent, 'Style', 'text', ...
+                'String', char(hex2dec('03b1')), ...
+                'HorizontalAlignment', 'right');
+            obj.discThresholdAlphaEdit = uicontrol(parent, 'Style', 'edit', ...
+                'String', '0.05');
+            obj.discInformationCriteriaText = uicontrol(parent, 'Style', 'text', ...
+                'String', 'IC', ...
+                'HorizontalAlignment', 'right');
+            obj.discInformationCriteriaPopup = uicontrol(parent, 'Style', 'popupmenu', ...
+                'String', {'BIC-GMM'}, 'Value', 1);
+            
 %             obj.Parent = parent; % calls resize() and updateResizeListener()
             obj.resize();
             obj.updateResizeListener();
+            
+            if ~isempty(obj.experiment)
+                obj.experiment = obj.experiment; % sets listeners and stuff
+            end
+        end
+        
+        function delete(obj)
+            %DELETE Delete all graphics object properties and listeners.
+            delete(obj.resizeListener);
+            delete(obj.channelImageViewers);
+            delete(obj.channelSpotProjectionViewers);
+            h = [ ...
+                obj.menuBtn ...
+                obj.refreshUiBtn ...
+                obj.channelsListHeaderText ...
+                obj.addChannelBtn ...
+                obj.removeChannelsBtn ...
+                obj.channelsListBox ...
+                obj.layoutHeaderText ...
+                obj.showImagesAndOrProjectionsBtnGroup ...
+                obj.spotsHeaderText ...
+                obj.prevSpotBtn ...
+                obj.nextSpotBtn ...
+                obj.spotIndexEdit ...
+                obj.spotTagsEdit ...
+                obj.tagsMaskText ...
+                obj.tagsMaskEdit ...
+                obj.showSpotMarkersBtn ...
+                obj.zoomOnSelectedSpotBtn ...
+                obj.idealizationHeaderText ...
+                obj.idealizationMethodText ...
+                obj.idealizationMethodPopup ...
+                obj.showIdealizationBtn ...
+                obj.autoComputeIdealizationBtn ...
+                obj.idealizeBtn ...
+                obj.idealizeAllBtn ...
+                obj.discThresholdAlphaText ...
+                obj.discThresholdAlphaEdit ...
+                obj.discInformationCriteriaText ...
+                obj.discInformationCriteriaPopup ...
+                ];
+            delete(h(isgraphics(h)));
+        end
+        
+        function deleteListeners(obj)
+            if isvalid(obj.selectedSpotIndexChangedListener)
+                delete(obj.selectedSpotIndexChangedListener);
+                obj.selectedSpotIndexChangedListener = event.listener.empty;
+            end
+        end
+        
+        function updateListeners(obj)
+            obj.deleteListeners();
+            if ~isempty(obj.experiment)
+                obj.selectedSpotIndexChangedListener = ...
+                    addlistener(obj.experiment, 'SelectedSpotIndexChanged', ...
+                    @(varargin) obj.onSelectedSpotIndexChanged());
+            end
         end
         
         function set.experiment(obj, experiment)
             obj.experiment = experiment;
+            
             % delete old channel viewers
             delete(obj.channelImageViewers);
             delete(obj.channelSpotProjectionViewers);
-%             delete(obj.selectedSpotChangedListeners);
+
             % create new channel viewers
             nchannels = numel(experiment.channels);
             obj.channelImageViewers = ChannelImageViewer.empty;
@@ -99,70 +240,29 @@ classdef ExperimentViewer < handle
             for c = 1:nchannels
                 obj.channelImageViewers(c) = ChannelImageViewer(obj.Parent);
                 obj.channelImageViewers(c).channel = experiment.channels(c);
-                obj.channelImageViewers(c).experimentViewer = obj;
                 obj.channelImageViewers(c).removeResizeListener(); % Handled by this class.
                 obj.channelSpotProjectionViewers(c) = ChannelSpotProjectionViewer(obj.Parent);
                 obj.channelSpotProjectionViewers(c).channel = experiment.channels(c);
-                obj.channelSpotProjectionViewers(c).experimentViewer = obj;
                 obj.channelSpotProjectionViewers(c).removeResizeListener(); % Handled by this class.
-%                 obj.selectedSpotChangedListeners(c) = ...
-%                     addlistener(obj.experiment.channels(c), 'SelectedSpotChanged', ...
-%                     @(src, varargin) obj.onSelectedSpotChanged(src));
+            end
+            
+            % update channels list box and refresh channels display
+            if isempty(obj.channelsListBox.Value) && nchannels > 0
+                obj.channelsListBox.Value = 1:nchannels;
             end
             obj.updateChannelsListBox();
             obj.showChannels();
-            linkaxes(horzcat(obj.channelImageViewers.imageAxes), 'xy');
-            linkaxes(horzcat(obj.channelSpotProjectionViewers.projAxes), 'x');
-        end
-        
-        function onSelectedSpotChanged(obj, srcChannel)
-            if obj.spotChangingLock
-                return
+            
+            % link axes
+            if ~isempty(obj.channelImageViewers)
+                linkaxes(horzcat(obj.channelImageViewers.imageAxes), 'xy');
             end
-            obj.spotChangingLock = 1;
-            if isempty(srcChannel.selectedSpot)
-                % clear selected spot in all channels
-                for channel = obj.experiment.channels
-                    if channel ~= srcChannel
-                        channel.selectedSpot = Spot.empty;
-                    end
-                end
-            else
-                idx = find(srcChannel.spots == srcChannel.selectedSpot, 1);
-                if isempty(idx)
-                    % not a spot, just show same location in other viewers
-                    for channel = obj.experiment.channels
-                        if channel ~= srcChannel
-                            spot = Spot;
-                            spot.xy = channel.getOtherChannelSpotsInLocalCoords(srcChannel, srcChannel.selectedSpot.xy);
-                            channel.selectedSpot = spot;
-                        end
-                    end
-                else
-                    % a spot, show same spot in other viewers ONLY if spots
-                    % are aligned between channels OR the other viewer has
-                    % no spots itself
-                    for channel = obj.experiment.channels
-                        if channel ~= srcChannel
-                            if isempty(channel.spots)
-                                % just show aligned location
-                                spot = Spot;
-                                spot.xy = channel.getOtherChannelSpotsInLocalCoords(srcChannel, srcChannel.selectedSpot.xy);
-                                channel.selectedSpot = spot;
-                            else
-                                spot = channel.spots(idx);
-%                                 if isequal(size(src.channel.spots), size(viewer.channel.spots))
-%                                     xy = src.channel.getAlignedSpotsInLocalCoords(viewer.channel, spot.xy);
-%                                     if sum((xy - src.selectedSpot.xy).^2) < 3^2
-%                                         viewer.selectedSpot = spot;
-%                                     end
-%                                 end
-                            end
-                        end
-                    end
-                end
+            if ~isempty(obj.channelSpotProjectionViewers)
+                linkaxes(horzcat(obj.channelSpotProjectionViewers.projAxes), 'x');
             end
-            obj.spotChangingLock = 0;
+            
+            % update listeners
+            obj.updateListeners();
         end
         
         function parent = get.Parent(obj)
@@ -185,7 +285,7 @@ classdef ExperimentViewer < handle
             obj.updateResizeListener();
         end
         
-        function resize(obj, varargin)
+        function resize(obj)
             %RESIZE Reposition objects within Parent.
             
             margin = 2;
@@ -202,20 +302,64 @@ classdef ExperimentViewer < handle
             wc = 150;
             lh = 15;
             y = y0 + h - lh;
-            obj.loadDataBtn.Position = [x0 y wc/3 lh];
-            obj.saveDataBtn.Position = [x0+wc/3 y wc/3 lh];
-            obj.refreshUiBtn.Position = [x0+wc*2/3 y wc/3 lh];
+            obj.menuBtn.Position = [x0 y lh lh];
+            obj.refreshUiBtn.Position = [x0+lh y lh lh];
+            % channels
             y = y - margin - lh;
             obj.channelsListHeaderText.Position = [x0 y wc-2*lh lh];
             obj.addChannelBtn.Position = [x0+wc-2*lh y lh lh];
             obj.removeChannelsBtn.Position = [x0+wc-lh y lh lh];
             y = y - 100;
             obj.channelsListBox.Position = [x0 y wc 100];
+            % layout
             y = y - margin - lh;
+            obj.layoutHeaderText.Position = [x0 y wc lh];
+            y = y - lh;
             obj.showImagesAndOrProjectionsBtnGroup.Position = [x0 y wc lh];
             obj.showImagesBtn.Position = [0 0 .3*wc lh];
             obj.showProjectionsBtn.Position = [.3*wc 0 .3*wc lh];
             obj.showImagesAndProjectionsBtn.Position = [.6*wc 0 .4*wc lh];
+            % spots
+            y = y - margin - lh;
+            obj.spotsHeaderText.Position = [x0 y wc lh];
+            y = y - 2 * lh;
+            obj.prevSpotBtn.Position = [x0 y 2*lh 2*lh];
+            obj.nextSpotBtn.Position = [x0+wc-2*lh y 2*lh 2*lh];
+            obj.spotIndexEdit.Position = [x0+2*lh y+lh wc-4*lh lh];
+            obj.spotTagsEdit.Position = [x0+2*lh y wc-4*lh lh];
+            y = y - lh;
+            obj.tagsMaskText.Position = [x0 y 50 lh];
+            obj.tagsMaskEdit.Position = [x0+50 y wc-50 lh];
+            y = y - lh;
+            obj.showSpotMarkersBtn.Position = [x0 y .5*wc lh];
+            obj.zoomOnSelectedSpotBtn.Position = [x0+.5*wc y .5*wc lh];
+            % idealization
+            y = y - margin - lh;
+            obj.idealizationHeaderText.Position = [x0 y wc lh];
+            y = y - lh;
+            obj.idealizeBtn.Position = [x0 y .5*wc lh];
+            obj.idealizeAllBtn.Position = [x0+.5*wc y .5*wc lh];
+            y = y - lh;
+            obj.showIdealizationBtn.Position = [x0 y .5*wc lh];
+            obj.autoComputeIdealizationBtn.Position = [x0+.5*wc y .5*wc lh];
+            y = y - 20;
+            obj.idealizationMethodText.Position = [x0 y 50 20];
+            obj.idealizationMethodPopup.Position = [x0+50 y wc-50 20];
+            if obj.idealizationMethodPopup.String{obj.idealizationMethodPopup.Value} == "DISC"
+                y = y - lh;
+                obj.discThresholdAlphaText.Position = [x0 y 50 lh];
+                obj.discThresholdAlphaEdit.Position = [x0+50 y wc-50 lh];
+                obj.discThresholdAlphaText.Visible = 'on';
+                obj.discThresholdAlphaEdit.Visible = 'on';
+                y = y - 20;
+                obj.discInformationCriteriaText.Position = [x0 y 50 20];
+                obj.discInformationCriteriaPopup.Position = [x0+50 y wc-50 20];
+                obj.discInformationCriteriaText.Visible = 'on';
+                obj.discInformationCriteriaPopup.Visible = 'on';
+            else
+                obj.discInformationCriteriaText.Visible = 'off';
+                obj.discInformationCriteriaPopup.Visible = 'off';
+            end
             
             % visible channels
             nchannels = numel(obj.experiment.channels);
@@ -275,31 +419,36 @@ classdef ExperimentViewer < handle
         end
         
         function updateResizeListener(obj)
-            if ~isempty(obj.resizeListener) && isvalid(obj.resizeListener)
+            if isvalid(obj.resizeListener)
                 delete(obj.resizeListener);
             end
-            obj.resizeListener = addlistener(ancestor(obj.Parent, 'Figure'), 'SizeChanged', @obj.resize);
+            obj.resizeListener = ...
+                addlistener(ancestor(obj.Parent, 'Figure'), ...
+                'SizeChanged', @(varargin) obj.resize());
         end
         
         function addChannel(obj)
-            obj.experiment.channels = [obj.experiment.channels Channel()];
-            
-            viewer = ChannelImageViewer(obj.Parent);
-            viewer.channel = obj.experiment.channels(end);
-            viewer.removeResizeListener();
-            obj.channelImageViewers = [obj.channelImageViewers viewer];
-            linkaxes(horzcat(obj.channelImageViewers.imageAxes), 'xy');
-            
-            viewer = ChannelSpotProjectionViewer(obj.Parent);
-            viewer.channel = obj.experiment.channels(end);
-            viewer.removeResizeListener();
-            obj.channelSpotProjectionViewers = [obj.channelSpotProjectionViewers viewer];
-            linkaxes(horzcat(obj.channelSpotProjectionViewers.projAxes), 'x');
-            
+            obj.experiment.channels = [obj.experiment.channels Channel];
+            obj.channelsListBox.String = cellstr(horzcat(obj.experiment.channels.label));
             obj.channelsListBox.Value = [obj.channelsListBox.Value numel(obj.experiment.channels)];
-            obj.updateChannelsListBox();
+            obj.experiment = obj.experiment; % updates everything
             
-            obj.showChannels();
+%             viewer = ChannelImageViewer(obj.Parent);
+%             viewer.channel = obj.experiment.channels(end);
+%             viewer.removeResizeListener();
+%             obj.channelImageViewers = [obj.channelImageViewers viewer];
+%             linkaxes(horzcat(obj.channelImageViewers.imageAxes), 'xy');
+%             
+%             viewer = ChannelSpotProjectionViewer(obj.Parent);
+%             viewer.channel = obj.experiment.channels(end);
+%             viewer.removeResizeListener();
+%             obj.channelSpotProjectionViewers = [obj.channelSpotProjectionViewers viewer];
+%             linkaxes(horzcat(obj.channelSpotProjectionViewers.projAxes), 'x');
+%             
+%             obj.channelsListBox.Value = [obj.channelsListBox.Value numel(obj.experiment.channels)];
+%             obj.updateChannelsListBox();
+%             
+%             obj.showChannels();
         end
         
         function removeChannels(obj, idx)
@@ -309,6 +458,11 @@ classdef ExperimentViewer < handle
             if isempty(idx)
                 return
             end
+            
+            if questdlg('Remove selected channels?', 'Remove Channels') ~= "Yes"
+                return
+            end
+            
             selected = false(1, numel(obj.experiment.channels));
             selected(obj.getVisibleChannelIndices()) = true;
             selected(idx) = [];
@@ -316,16 +470,20 @@ classdef ExperimentViewer < handle
             delete(obj.experiment.channels(idx));
             obj.experiment.channels(idx) = [];
             
-            delete(obj.channelImageViewers(idx));
-            obj.channelImageViewers(idx) = [];
-            
-            delete(obj.channelSpotProjectionViewers(idx));
-            obj.channelSpotProjectionViewers(idx) = [];
-            
             obj.channelsListBox.Value = find(selected);
-            obj.updateChannelsListBox();
+%             obj.channelsListBox.String = cellstr(horzcat(obj.experiment.channels.label));
+            obj.experiment = obj.experiment; % updates everything
             
-            obj.showChannels();
+%             delete(obj.channelImageViewers(idx));
+%             obj.channelImageViewers(idx) = [];
+%             
+%             delete(obj.channelSpotProjectionViewers(idx));
+%             obj.channelSpotProjectionViewers(idx) = [];
+%             
+%             obj.channelsListBox.Value = find(selected);
+%             obj.updateChannelsListBox();
+%             
+%             obj.showChannels();
         end
         
         function updateChannelsListBox(obj)
@@ -382,9 +540,10 @@ classdef ExperimentViewer < handle
             [path, file, ext] = fileparts(filepath);
             fig.Name = strrep(file, '_', ' ');
             figure(fig);
+            obj.refreshUi();
         end
         
-        function saveData(obj, filepath, maxImageStackFrames)
+        function saveData(obj, filepath)
             if ~exist('filepath', 'var') || isempty(filepath)
                 [file, path] = uiputfile('*.mat', 'Save data to file.');
                 if isequal(file, 0)
@@ -393,23 +552,23 @@ classdef ExperimentViewer < handle
                 filepath = fullfile(path, file);
             end
             
-            % Do NOT save image stacks with frame count exceeding maxImageStackFrames.
-            if ~exist('maxImageStackFrames', 'var')
-                answer = inputdlg({'Only save image stack data when frame count <='}, 'Save Large Image Stacks?', 1, {'inf'});
-                if isempty(answer)
-                    return
-                end
-                maxImageStackFrames = str2num(answer{1});
-            end
-            for channel = obj.experiment.channels
-                for imstack = channel.images
-                    if imstack.numFrames() > maxImageStackFrames
-                        imstack.ownData = false;
-                    else
-                        imstack.ownData = true;
-                    end
-                end
-            end
+%             % Do NOT save image stacks with frame count exceeding maxImageStackFrames.
+%             if ~exist('maxImageStackFrames', 'var')
+%                 answer = inputdlg({'Only save image stack data when frame count <='}, 'Save Large Image Stacks?', 1, {'inf'});
+%                 if isempty(answer)
+%                     return
+%                 end
+%                 maxImageStackFrames = str2num(answer{1});
+%             end
+%             for channel = obj.experiment.channels
+%                 for imstack = channel.images
+%                     if imstack.numFrames() > maxImageStackFrames
+%                         imstack.ownData = false;
+%                     else
+%                         imstack.ownData = true;
+%                     end
+%                 end
+%             end
             
             wb = waitbar(0, 'Saving experiment to file...');
             experiment = obj.experiment;
@@ -421,7 +580,7 @@ classdef ExperimentViewer < handle
             figure(fig);
         end
         
-        function loadAllMissingImageStacks(obj)
+        function reloadAllMissingImages(obj)
             for channel = obj.experiment.channels
                 for imstack = channel.images
                     if isempty(imstack.data)
@@ -429,11 +588,102 @@ classdef ExperimentViewer < handle
                     end
                 end
             end
+            obj.refreshUi();
+        end
+        
+        function menuBtnPressed(obj)
+            %MENUBUTTONPRESSED Handle menu button press.
+            menu = obj.getMainMenu();
+            fig = ancestor(obj.Parent, 'Figure');
+            menu.Parent = fig;
+            menu.Position(1:2) = obj.menuBtn.Position(1:2);
+            menu.Visible = 1;
+        end
+        
+        function menu = getMainMenu(obj)
+            %GETMAINMENU Return main menu.
+            menu = uicontextmenu;
+            
+            uimenu(menu, 'Label', 'Load All Data', ...
+                'Callback', @(varargin) obj.loadData());
+            uimenu(menu, 'Label', 'Save All Data', ...
+                'Separator', 'on', ...
+                'Callback', @(varargin) obj.saveData());
+            
+            uimenu(menu, 'Label', 'Reload All Missing Images', ...
+                'Separator', 'on', ...
+                'Callback', @(varargin) obj.reloadAllMissingImages());
+            
+            uimenu(menu, 'Label', 'Refresh UI', ...
+                'Separator', 'on', ...
+                'Callback', @(varargin) obj.refreshUi());
         end
         
         function refreshUi(obj)
             obj.experiment = obj.experiment;
             obj.resize();
+            % toggle spot visibility
+            obj.showAllSpotsBtnPressed();
+        end
+        
+        function goToSpot(obj, k)
+            if ~exist('k', 'var')
+                k = str2num(obj.spotIndexEdit.String);
+            end
+            obj.experiment.selectedSpotIndex = k;
+        end
+        
+        function prevSpot(obj)
+            tagsMask = Spot.str2arr(obj.tagsMaskEdit.String, ',');
+            obj.experiment.prevSpot(tagsMask);
+        end
+        
+        function nextSpot(obj)
+            tagsMask = Spot.str2arr(obj.tagsMaskEdit.String, ',');
+            obj.experiment.nextSpot(tagsMask);
+        end
+        
+        function onSelectedSpotIndexChanged(obj)
+            k = obj.experiment.selectedSpotIndex;
+            % update spot index edit
+            obj.spotIndexEdit.String = num2str(k);
+            % update spot tags edit
+            ok = false;
+            for channel = obj.experiment.channels
+                if numel(channel.spots) >= k
+                    obj.spotTagsEdit.String = channel.spots(k).getTagsString();
+                    ok = true;
+                    break
+                end
+            end
+            if ~ok
+                obj.spotTagsEdit.String = '';
+            end
+            % update spots header
+            nspots = arrayfun(@(channel) numel(channel.spots), obj.experiment.channels);
+            nspotsmax = max(nspots);
+            obj.spotsHeaderText.String = ['Spots (' num2str(nspotsmax) ')'];
+        end
+        
+        function onSpotTagsEdited(obj)
+            k = obj.experiment.selectedSpotIndex;
+            for channel = obj.experiment.channels
+                if numel(channel.spots) >= k
+                    channel.spots(k).tags = obj.spotTagsEdit.String;
+                    return
+                end
+            end
+        end
+        
+        function showSpotMarkersBtnPressed(obj)
+            for viewer = obj.channelImageViewers
+                for marker = viewer.spotMarkers
+                    marker.Visible = obj.showSpotMarkersBtn.Value;
+                end
+            end
+        end
+        
+        function zoomOnSelectedSpotBtnPressed(obj)
         end
     end
 end

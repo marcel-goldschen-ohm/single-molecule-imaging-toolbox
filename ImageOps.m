@@ -6,16 +6,12 @@ classdef ImageOps < handle
     
     methods(Static)
         function [filteredim, sigma] = gaussFilterPreview(im, sigma, previewImage)
-            % GAUSSIANFILTERPREVIEW Apply gaussian filter with live preview
+            % GAUSSFILTERPREVIEW Apply gaussian filter with live preview
             %   Popup dialog to adjust sigma with live preview in
             %   previewImage (image graphics object).
             filteredim = [];
             if isempty(im)
                 errordlg('Requires an image.', 'Gaussian Filter');
-                return
-            end
-            if size(im,3) > 1
-                errordlg('Requires a grayscale image.', 'Gaussian Filter');
                 return
             end
             if (exist('previewImage', 'var') && isgraphics(previewImage)) ...
@@ -43,10 +39,24 @@ classdef ImageOps < handle
                 uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
                     'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
                     'Callback', 'delete(gcf)');
+                % preview image settings
+                if exist('previewImage', 'var') && isgraphics(previewImage)
+                    cdata = previewImage.CData;
+                    previewAxes = previewImage.Parent;
+                    cmap = colormap(previewAxes);
+                    colormap(previewAxes, gray(2^16));
+                end
                 ok = false; % OK dialog button will set back to true
                 showPreview_();
                 uiwait(dlg); % block until dialog closed
                 if ~ok % dialog canceled
+                    % restore previous image settings
+                    if exist('previewImage', 'var') && isgraphics(previewImage)
+                        previewImage.CData = cdata;
+                        previewImage.XData = [1 size(cdata, 2)];
+                        previewImage.YData = [1 size(cdata, 1)];
+                        colormap(previewAxes, cmap);
+                    end
                     return
                 end
             end
@@ -63,10 +73,11 @@ classdef ImageOps < handle
             end
             function fim = getFilteredImage_()
                 try
+                    fim = im;
                     if sigma > 0
-                        fim = imgaussfilt(im, sigma);
-                    else
-                        fim = im;
+                        for t = 1:size(im, 3)
+                            fim(:,:,t) = imgaussfilt(im(:,:,t), sigma);
+                        end
                     end
                 catch
                     fim = [];
@@ -80,13 +91,11 @@ classdef ImageOps < handle
                 if isempty(fim)
                     return
                 end
-                I = imadjust(uint16(fim));
-                rgb = cat(3,I,I,I);
-                previewImage.CData = rgb;
-                previewImage.XData = [1 size(rgb,2)];
-                previewImage.YData = [1 size(rgb,1)];
+                previewImage.CData = imadjust(uint16(fim(:,:,1:min(3, size(fim, 3)))));
+                previewImage.XData = [1 size(fim, 2)];
+                previewImage.YData = [1 size(fim, 1)];
             end
-            % get filtered image
+            % apply filter
             filteredim = getFilteredImage_();
         end
         
@@ -128,10 +137,24 @@ classdef ImageOps < handle
                 uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
                     'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
                     'Callback', 'delete(gcf)');
+                % preview image settings
+                if exist('previewImage', 'var') && isgraphics(previewImage)
+                    cdata = previewImage.CData;
+                    previewAxes = previewImage.Parent;
+                    cmap = colormap(previewAxes);
+                    colormap(previewAxes, gray(2^16));
+                end
                 ok = false; % OK dialog button will set back to true
                 showPreview_();
                 uiwait(dlg); % block until dialog closed
                 if ~ok % dialog canceled
+                    % restore previous image settings
+                    if exist('previewImage', 'var') && isgraphics(previewImage)
+                        previewImage.CData = cdata;
+                        previewImage.XData = [1 size(cdata, 2)];
+                        previewImage.YData = [1 size(cdata, 1)];
+                        colormap(previewAxes, cmap);
+                    end
                     return
                 end
             end
@@ -148,10 +171,12 @@ classdef ImageOps < handle
             end
             function fim = getFilteredImage_()
                 try
+                    fim = im;
                     if diskRadius > 0
-                        fim = imtophat(im, strel('disk', diskRadius));
-                    else
-                        fim = im;
+                        disk = strel('disk', diskRadius);
+                        for t = 1:size(im, 3)
+                            fim(:,:,t) = imtophat(im(:,:,t), disk);
+                        end
                     end
                 catch
                     fim = [];
@@ -165,13 +190,11 @@ classdef ImageOps < handle
                 if isempty(fim)
                     return
                 end
-                I = imadjust(uint16(fim));
-                rgb = cat(3,I,I,I);
-                previewImage.CData = rgb;
-                previewImage.XData = [1 size(rgb,2)];
-                previewImage.YData = [1 size(rgb,1)];
+                previewImage.CData = imadjust(uint16(fim(:,:,1:min(3, size(fim, 3)))));
+                previewImage.XData = [1 size(fim, 2)];
+                previewImage.YData = [1 size(fim, 1)];
             end
-            % get filtered image
+            % apply filter
             filteredim = getFilteredImage_();
         end
         
@@ -185,7 +208,7 @@ classdef ImageOps < handle
                 return
             end
             if size(im,3) > 1
-                errordlg('Requires a grayscale image.', 'Gaussian Filter');
+                errordlg('Requires a grayscale image.', 'Threshold');
                 return
             end
             if (exist('previewImage', 'var') && isgraphics(previewImage)) ...
@@ -225,9 +248,23 @@ classdef ImageOps < handle
                 uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
                     'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
                     'Callback', 'delete(gcf)');
+                % preview image settings
+                if exist('previewImage', 'var') && isgraphics(previewImage)
+                    cdata = previewImage.CData;
+                    previewAxes = previewImage.Parent;
+                    cmap = colormap(previewAxes);
+                    colormap(previewAxes, gray(2));
+                end
                 ok = false; % OK dialog button will set back to true
                 showPreview_();
                 uiwait(dlg); % block until dialog closed
+                % restore previous image settings
+                if exist('previewImage', 'var') && isgraphics(previewImage)
+                    previewImage.CData = cdata;
+                    previewImage.XData = [1 size(cdata, 2)];
+                    previewImage.YData = [1 size(cdata, 1)];
+                    colormap(previewAxes, cmap);
+                end
                 if ~ok % dialog canceled
                     return
                 end
@@ -265,13 +302,11 @@ classdef ImageOps < handle
                 if isempty(mask)
                     return
                 end
-                I = imadjust(uint8(mask));
-                rgb = cat(3,I,I,I);
-                previewImage.CData = rgb;
-                previewImage.XData = [1 size(mask,2)];
-                previewImage.YData = [1 size(mask,1)];
+                previewImage.CData = imadjust(uint8(mask));
+                previewImage.XData = [1 size(mask, 2)];
+                previewImage.YData = [1 size(mask, 1)];
             end
-            % get threshold mask
+            % apply threshold
             maskim = getThresholdMask_();
         end
         
@@ -440,18 +475,29 @@ classdef ImageOps < handle
                 uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
                     'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
                     'Callback', 'delete(gcf)');
+                % preview image settings
                 if exist('previewImage', 'var') && isgraphics(previewImage)
-                    ax = previewImage.Parent;
-                    hold(ax, 'on');
-                    previewMaxima = scatter(ax, nan, nan, 'm+', ...
+                    cdata = previewImage.CData;
+                    previewAxes = previewImage.Parent;
+                    cmap = colormap(previewAxes);
+                    colormap(previewAxes, gray(2^16));
+                    hold(previewAxes, 'on');
+                    previewMaxima = scatter(previewAxes, nan, nan, 'm+', ...
                         'HitTest', 'off', ...
                         'PickableParts', 'none');
                 end
                 ok = false; % OK dialog button will set back to true
                 showPreview_();
                 uiwait(dlg); % block until dialog closed
+                % restore previous image settings
                 if exist('previewMaxima', 'var') && isgraphics(previewMaxima)
                     delete(previewMaxima);
+                end
+                if exist('previewImage', 'var') && isgraphics(previewImage)
+                    previewImage.CData = cdata;
+                    previewImage.XData = [1 size(cdata, 2)];
+                    previewImage.YData = [1 size(cdata, 1)];
+                    colormap(previewAxes, cmap);
                 end
                 if ~ok % dialog canceled
                     return
@@ -506,11 +552,9 @@ classdef ImageOps < handle
                     return
                 end
                 [xy_, im_] = findMaxima_(true); % approx but fast merging of nearby maxima for live update
-                I = imadjust(uint16(im_));
-                rgb = cat(3,I,I,I);
-                previewImage.CData = rgb;
-                previewImage.XData = [1 size(rgb,2)];
-                previewImage.YData = [1 size(rgb,1)];
+                previewImage.CData = imadjust(uint16(im_));
+                previewImage.XData = [1 size(im_, 2)];
+                previewImage.YData = [1 size(im_, 1)];
                 if ~exist('previewMaxima', 'var') || ~isgraphics(previewMaxima)
                     return
                 end

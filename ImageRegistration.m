@@ -19,7 +19,7 @@ classdef ImageRegistration < handle
     
     methods
         function obj = ImageRegistration()
-            %IMAGEREGISTRATION Construct an instance of this class
+            %IMAGEREGISTRATION Constructor.
         end
         
         function registeredImage = getRegisteredImage(obj, movingImage)

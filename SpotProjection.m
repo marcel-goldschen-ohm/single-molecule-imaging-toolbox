@@ -1,63 +1,65 @@
-classdef SpotProjection < timeseries
+classdef SpotProjection < handle
     %SPOTPROJECTION Summary of this class goes here
     %   Detailed explanation goes here
     
     properties
+        time = [];
+        data = [];
+        
+        timeUnits = 'frames';
+        dataUnits = 'au';
+        
+        idealData = [];
+        
+        % Optionally specify time only by a sample interval.
         sampleInterval = [];
         
-        % basic adjustments: offset and scale
-        offset = 0; % 1x1 (uniform) OR Tx1 (nonuniform) baseline offset
-        scale = 1; % 1x1 (uniform) OR Tx1 (nonuniform) scale factor
+        % adjustments to raw data
+        offsetData = 0; % 1x1 (uniform) OR Tx1 (nonuniform) baseline offset
+        scaleData = 1; % 1x1 (uniform) OR Tx1 (nonuniform) scale factor
         
-        % optional masking
+        % optional masking of raw data points
         isMasked = false; % 1x1 (uniform) OR Tx1 (nonuniform), F=ok, T=masked
-        
-        idealizedData = [];
-    end
-    
-    properties (Dependent)
-        timeSamples
-        rawData
-        adjustedData
     end
     
     methods
         function obj = SpotProjection()
-            %SPOTPROJECTION Construct an instance of this class
-            %   Detailed explanation goes here
+            %SPOTPROJECTION Constructor.
         end
         
-        function x = get.timeSamples(obj)
-            if isequal(size(obj.Time), size(obj.Data))
-                x = obj.Time;
-            elseif ~isempty(obj.Data) && ~isempty(obj.sampleInterval)
-                x = obj.sampleInterval .* [0:size(obj.Data,1)-1]';
+        function x = get.time(obj)
+            if isequal(size(obj.time), size(obj.data))
+                x = obj.time;
+            elseif ~isempty(obj.data) && ~isempty(obj.sampleInterval)
+                x = obj.sampleInterval .* reshape([0:size(obj.data,1)-1], [], 1);
+            elseif ~isempty(obj.data)
+                x = reshape([1:size(obj.data,1)], [], 1);
             else
                 x = [];
             end
         end
         
-        function y = get.rawData(obj)
-            y = obj.Data;
+        function set.time(obj, x)
+            obj.time = reshape(x, [], 1);
         end
         
-        function set.rawData(obj, y)
-            obj.Data = reshape(y, [], 1);
-        end
-        
-        function y = get.adjustedData(obj)
-            y = obj.Data;
+        function y = get.data(obj)
+            y = obj.data;
             if isempty(y)
                 return
             end
             % offset
-            if obj.offset
-                y = y + obj.offset;
+            if obj.offsetData
+                y = y + obj.offsetData;
             end
             % scale
-            if obj.scale ~= 1
-                y = y .* obj.scale;
+            if obj.scaleData ~= 1
+                y = y .* obj.scaleData;
             end
+        end
+        
+        function set.data(obj, y)
+            obj.data = reshape(y, [], 1);
         end
         
         function isMasked = getIsMasked(obj)

@@ -42,7 +42,10 @@ classdef ImageStackViewer < handle
     properties (Access = private)
         % Calls resize() upon ancestor figure's SizeChanged events.
         % Access via updateResizeListener() and removeResizeListener().
-        resizeListener = [];
+        resizeListener = event.listener.empty;
+        
+        labelChangedListener = event.listener.empty;
+        dataChangedListener = event.listener.empty;
     end
     
     properties (Dependent)
@@ -86,13 +89,14 @@ classdef ImageStackViewer < handle
                 'PickableParts', 'none');
             axis(obj.imageAxes, 'image');
             set(obj.imageAxes, 'ButtonDownFcn', @obj.imageAxesButtonDown);
+            colormap(obj.imageAxes, gray(2^16));
             
             % frame slider
             obj.frameSlider = uicontrol(parent, 'Style', 'slider', ...
                 'Min', 1, 'Max', 1, 'Value', 1, ...
                 'SliderStep', [1 1], ... % [1/nframes 1/nframes]
                 'Units', 'pixels');
-            addlistener(obj.frameSlider, 'Value', 'PostSet', @obj.frameSliderMoved);
+            addlistener(obj.frameSlider, 'Value', 'PostSet', @(varargin) obj.frameSliderMoved());
             
             % info text
             obj.infoText = uicontrol(parent, 'Style', 'text', ...
@@ -103,7 +107,9 @@ classdef ImageStackViewer < handle
         end
         
         function delete(obj)
-            %DELETE Delete all graphics object properties.
+            %DELETE Delete all graphics object properties and listeners.
+            obj.deleteListeners();
+            obj.removeResizeListener();
             h = [ ...
                 obj.imageAxes ...
                 obj.frameSlider ...
@@ -113,6 +119,27 @@ classdef ImageStackViewer < handle
                 obj.toolbarPanel ...
                 ];
             delete(h(isgraphics(h)));
+        end
+        
+        function deleteListeners(obj)
+            if isvalid(obj.labelChangedListener)
+                delete(obj.labelChangedListener);
+                obj.labelChangedListener = event.listener.empty;
+            end
+            if isvalid(obj.dataChangedListener)
+                delete(obj.dataChangedListener);
+                obj.dataChangedListener = event.listener.empty;
+            end
+        end
+        
+        function updateListeners(obj)
+            obj.deleteListeners();
+            if ~isempty(obj.imageStack)
+                obj.labelChangedListener = ...
+                    addlistener(obj.imageStack, 'LabelChanged', @(varargin) obj.updateInfoText());
+                obj.dataChangedListener = ...
+                    addlistener(obj.imageStack, 'DataChanged', @(varargin) obj.showFrame());
+            end
         end
         
         function parent = get.Parent(obj)
@@ -180,13 +207,12 @@ classdef ImageStackViewer < handle
             end
             zoomOut = isempty(obj.imageStack.data) || ~obj.isZoomed();
             obj.imageStack = imageStack;
-            nframes = obj.imageStack.numFrames();
-            prevFrameIndex = obj.frameSlider.Value;
+            nframes = obj.imageStack.numFrames;
             if nframes > 1
                 obj.frameSlider.Visible = 'on';
                 obj.frameSlider.Min = 1;
                 obj.frameSlider.Max = nframes;
-                obj.frameSlider.Value = max(1, min(obj.frameSlider.Value, nframes));
+                obj.frameSlider.Value = max(1, min(obj.imageStack.selectedFrameIndex, nframes));
                 obj.frameSlider.SliderStep = [1./nframes 1./nframes];
             else
                 obj.frameSlider.Visible = 'off';
@@ -196,6 +222,7 @@ classdef ImageStackViewer < handle
                 obj.zoomOutFullImage();
             end
             obj.resize(); % reposition slider and info text relative to image
+            obj.updateListeners();
             notify(obj, 'ImageStackChanged');
         end
         
@@ -204,7 +231,7 @@ classdef ImageStackViewer < handle
             obj.imageStack = obj.imageStack;
         end
         
-        function resize(obj, src, event)
+        function resize(obj)
             %RESIZE Reposition all graphics objects within Parent.
             
             % Get bounding box [x y w h] within Parent in which to display
@@ -292,7 +319,9 @@ classdef ImageStackViewer < handle
             if ~isempty(obj.resizeListener) && isvalid(obj.resizeListener)
                 delete(obj.resizeListener);
             end
-            obj.resizeListener = addlistener(ancestor(obj.Parent, 'Figure'), 'SizeChanged', @obj.resize);
+            obj.resizeListener = ...
+                addlistener(ancestor(obj.Parent, 'Figure'), ...
+                'SizeChanged', @(varargin) obj.resize());
         end
         
         function removeResizeListener(obj)
@@ -300,10 +329,10 @@ classdef ImageStackViewer < handle
             if ~isempty(obj.resizeListener) && isvalid(obj.resizeListener)
                 delete(obj.resizeListener);
             end
-            obj.resizeListener = [];
+            obj.resizeListener = event.listener.empty;
         end
         
-        function frameSliderMoved(obj, src, event)
+        function frameSliderMoved(obj)
             %FRAMESLIDERMOVED Handle frame slider move event.
             %   Update displayed image frame and frame info text.
             t = uint32(round(obj.frameSlider.Value));
@@ -311,52 +340,25 @@ classdef ImageStackViewer < handle
             obj.showFrame(t);
         end
         
-        function t = getCurrentFrameIndex(obj)
-            %GETCURRENTFRAMEINDEX Return current frame index from slider.
-            t = 0;
-            nframes = obj.imageStack.numFrames();
-            if nframes == 1
-                t = 1;
-            elseif nframes > 1
-                t = max(1, min(obj.frameSlider.Value, nframes));
-            end
-        end
-        
-        function frame = getFrameData(obj, t)
-            %GETFRAMEDATA Return image data for frame t.
-            if ~exist('t', 'var') || isempty(t)
-                t = getCurrentFrameIndex(obj);
-            end
-            frame = obj.imageStack.getFrameData(t);
-        end
-        
         function showFrame(obj, t)
             %SHOWFRAME Display frame t.
-            if ~exist('t', 'var')
-                t = obj.getCurrentFrameIndex();
+            if ~exist('t', 'var') || isempty(t)
+                t = obj.imageStack.selectedFrameIndex;
             end
-            frame = obj.imageStack.getFrameData(t);
+            frame = obj.imageStack.getFrame(t);
             if isempty(frame)
                 obj.imageFrame.CData = [];
-            elseif size(frame,3) == 1 % monochrome
-                I = imadjust(uint16(frame));
-                obj.imageFrame.CData = cat(3,I,I,I);
-            elseif size(frame,3) == 3 % assume RGB
-                obj.imageFrame.CData = imadjust(uint16(frame));
-            else
-                errordlg('Currently only handles grayscale or RGB images.', 'Image Format Error');
-            end
-            if isempty(obj.imageFrame.CData)
                 obj.imageFrame.XData = [];
                 obj.imageFrame.YData = [];
             else
-                w = size(obj.imageFrame.CData,2);
-                h = size(obj.imageFrame.CData,1);
-                obj.imageFrame.XData = [1 w];
-                obj.imageFrame.YData = [1 h];
-                if obj.imageStack.numFrames() > 1
+                obj.imageFrame.CData = imadjust(uint16(frame));
+                obj.imageFrame.XData = [1 size(frame, 2)];
+                obj.imageFrame.YData = [1 size(frame, 1)];
+                if obj.imageStack.numFrames > 1
                     obj.frameSlider.Value = t;
-                    notify(obj, 'FrameChanged');
+                    if obj.imageStack.selectedFrameIndex ~= t
+                        obj.imageStack.selectedFrameIndex = t;
+                    end
                 end
             end
             obj.updateInfoText();
