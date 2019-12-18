@@ -5,11 +5,10 @@ classdef SpotProjection < handle
     properties
         time = [];
         data = [];
+        ideal = [];
         
         timeUnits = 'frames';
         dataUnits = 'au';
-        
-        idealData = [];
         
         % Optionally specify time only by a sample interval.
         sampleInterval = [];
@@ -60,6 +59,16 @@ classdef SpotProjection < handle
         
         function set.data(obj, y)
             obj.data = reshape(y, [], 1);
+            if ~isequal(size(obj.data), size(obj.ideal))
+                obj.ideal = [];
+            end
+        end
+        
+        function set.ideal(obj, y)
+            y = reshape(y, [], 1);
+            if isequal(size(y), size(obj.data))
+                obj.ideal = y;
+            end
         end
         
         function isMasked = getIsMasked(obj)

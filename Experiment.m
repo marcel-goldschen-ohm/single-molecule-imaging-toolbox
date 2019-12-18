@@ -11,17 +11,16 @@ classdef Experiment < handle
         % Row vector of channels.
         channels = Channel.empty(1,0);
         
-        % Flag indicating whether spots are aligned across channels or not.
-        areSpotsAlignedAcrossChannels = false;
+        % BELOW PROPERTIES ARE PRIMARILY FOR THE USER INTERFACE
+        % THEY MOSTLY JUST REFER TO THE ABOVE DATA PROPERTIES
+        
+        % Selected spot index.
+        selectedSpotIndex = [];
     end
-    
-%     properties (Access = private)
-%         % working dir
-%         wd = pwd();
-%     end
     
     events
         ChannelsChanged
+        SelectedSpotIndexChanged
     end
     
     methods
@@ -30,30 +29,94 @@ classdef Experiment < handle
         end
         
         function set.channels(obj, channels)
-            % Make sure each channel's parentExperiment refers to obj.
+            % Make sure each channel's parent experiment refers to obj.
             obj.channels = channels;
             for channel = channels
-                channel.parentExperiment = obj;
+                channel.Parent = obj;
             end
             notify(obj, 'ChannelsChanged');
         end
         
-%         function tf = get.areSpotsAlignedAcrossChannels(obj)
-%             tf = false;
-%             if ~obj.areSpotsAlignedAcrossChannels
-%                 return
-%             end
-%             % obj.areSpotsAlignedAcrossChannels == true
-%             % double check that all channels have the same number of spots
-%             nchannels = numel(obj.channels);
-%             nspots = zeros(1, nchannels);
-%             for c = 1:nchannels
-%                 nspots(c) = numel(obj.channels(c).spots);
-%             end
-%             if all(nspots > 0) && all(diff(nspots) == 0)
-%                 tf = true;
-%             end
-%         end
+        function set.selectedSpotIndex(obj, k)
+            nspots = arrayfun(@(channel) numel(channel.spots), obj.channels);
+            nspotsmax = max(nspots);
+            if isempty(k) || nspotsmax == 0
+                obj.selectedSpotIndex = [];
+                notify(obj, 'SelectedSpotIndexChanged');
+                return
+            end
+            k = max(1, min(k, nspotsmax));
+            for c = 1:numel(obj.channels)
+                channel = obj.channels(c);
+                if nspots(c) >= k
+                    channel.selectedSpot = channel.spots(k);
+                else
+                    channel.selectedSpot = Spot.empty;
+                end
+            end
+            obj.selectedSpotIndex = k;
+            notify(obj, 'SelectedSpotIndexChanged');
+        end
+        
+        function prevSpot(obj, tagsMask)
+            nspots = arrayfun(@(channel) numel(channel.spots), obj.channels);
+            nspotsmax = max(nspots);
+            if nspotsmax == 0
+                obj.selectedSpotIndex = [];
+                return
+            end
+            if isempty(obj.selectedSpotIndex)
+                k = nspotsmax;
+            else
+                k = max(1, min(obj.selectedSpotIndex - 1, nspotsmax));
+            end
+            if ~exist('tagsMask', 'var') || isempty(tagsMask)
+                obj.selectedSpotIndex = k;
+            else
+                while k >= 1
+                    for c = 1:numel(obj.channels)
+                        channel = obj.channels(c);
+                        if nspots(c) >= k
+                            if ~isempty(intersect(tagsMask, channel.spots(k).tags))
+                                obj.selectedSpotIndex = k;
+                                return
+                            end
+                        end
+                    end
+                    k = k - 1;
+                end
+            end
+        end
+        
+        function nextSpot(obj, tagsMask)
+            nspots = arrayfun(@(channel) numel(channel.spots), obj.channels);
+            nspotsmax = max(nspots);
+            if nspotsmax == 0
+                obj.selectedSpotIndex = [];
+                return
+            end
+            if isempty(obj.selectedSpotIndex)
+                k = 1;
+            else
+                k = max(1, min(obj.selectedSpotIndex + 1, nspotsmax));
+            end
+            if ~exist('tagsMask', 'var') || isempty(tagsMask)
+                obj.selectedSpotIndex = k;
+            else
+                while k <= nspotsmax
+                    for c = 1:numel(obj.channels)
+                        channel = obj.channels(c);
+                        if nspots(c) >= k
+                            if ~isempty(intersect(tagsMask, channel.spots(k).tags))
+                                obj.selectedSpotIndex = k;
+                                return
+                            end
+                        end
+                    end
+                    k = k + 1;
+                end
+            end
+        end
     end
     
     methods (Static)

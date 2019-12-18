@@ -47,12 +47,13 @@ classdef Channel < handle
         overlayChannel = Channel.empty;
         overlayColorChannels = [2 1 2]; % green-magenta
         
-        % Sum blocks of frames together (i.e. to simulate a longer frame
-        % exposure).
-        sumEveryNFramesOfProjection = 1;
-        
-        projectionHistogramNumBins = 80;
-        projectionHistogramSqrtCounts = false;
+        % Spot projection options.
+        spotProjectionSumEveryNFrames = 1;
+        spotProjectionHistogramNumBins = 80;
+        spotProjectionHistogramSqrtCounts = false;
+        spotProjectionIdealizationMethod = "";
+        spotProjectionIdealizationParams = struct;
+        spotProjectionAutoIdealize = true;
     end
     
     properties (Dependent)
@@ -70,11 +71,23 @@ classdef Channel < handle
         SelectedSpotChanged
         SelectedProjectionImageStackChanged
         OverlayChannelChanged
+        SpotProjectionChanged
     end
     
     methods
         function obj = Channel()
             %CHANNEL Constructor.
+        end
+        
+        function set.label(obj, label)
+            obj.label = string(label);
+        end
+        function editLabel(obj)
+            answer = inputdlg({'label'}, 'Channel Label', 1, {char(obj.label)});
+            if isempty(answer)
+                return
+            end
+            obj.label = string(answer{1});
         end
         
         function set.images(obj, images)
@@ -267,11 +280,129 @@ classdef Channel < handle
             obj.overlayColorChannels = colors;
         end
         
-        function set.sumEveryNFramesOfProjection(obj, n)
-            obj.sumEveryNFramesOfProjection = n;
-            if ~isempty(obj.selectedSpot)
-                % update selected spot projection
-                notify(obj, 'SelectedSpotChanged');
+        function set.spotProjectionSumEveryNFrames(obj, n)
+            obj.spotProjectionSumEveryNFrames = n;
+            notify(obj, 'SpotProjectionChanged');
+        end
+        function editSumEveryNFrames(obj)
+            answer = inputdlg({'Sum blocks of N frames:'}, ...
+                'Sum Frames', 1, {num2str(obj.spotProjectionSumEveryNFrames)});
+            if isempty(answer)
+                return
+            end
+            obj.spotProjectionSumEveryNFrames = str2num(answer{1});
+        end
+        
+        function set.spotProjectionHistogramNumBins(obj, n)
+            obj.spotProjectionHistogramNumBins = n;
+            notify(obj, 'SpotProjectionChanged');
+        end
+        
+        function set.spotProjectionHistogramSqrtCounts(obj, tf)
+            obj.spotProjectionHistogramSqrtCounts = tf;
+            notify(obj, 'SpotProjectionChanged');
+        end
+        
+        function set.spotProjectionIdealizationMethod(obj, method)
+            obj.spotProjectionIdealizationMethod = string(method);
+            notify(obj, 'SpotProjectionChanged');
+        end
+        function setSpotProjectionIdealizationMethod(obj, method)
+            obj.spotProjectionIdealizationMethod = method;
+            obj.editSpotProjectionIdealizationParams();
+        end
+        
+        function set.spotProjectionIdealizationParams(obj, params)
+            obj.spotProjectionIdealizationParams = params;
+            notify(obj, 'SpotProjectionChanged');
+        end
+        function editSpotProjectionIdealizationParams(obj)
+            if isempty(obj.spotProjectionIdealizationMethod)
+                return
+            end
+            if obj.spotProjectionIdealizationMethod == "DISC"
+                % default params
+                if isfield(obj.spotProjectionIdealizationParams, 'DISC')
+                    params = obj.spotProjectionIdealizationParams.DISC;
+                    if ~isfield(params, 'alpha')
+                        params.alpha = 0.05;
+                    end
+                    if ~isfield(params, 'informationCriterion')
+                        params.informationCriterion = "BIC-GMM";
+                    end
+                else
+                    params.alpha = 0.05;
+                    params.informationCriterion = "BIC-GMM";
+                end
+                % params dialog
+                dlg = dialog('Name', 'DISC');
+                w = 200;
+                lh = 20;
+                h = 2*lh + 30;
+                dlg.Position(3) = w;
+                dlg.Position(4) = h;
+                y = h - lh;
+                uicontrol(dlg, 'Style', 'text', 'String', char(hex2dec('03b1')), ...
+                    'HorizontalAlignment', 'right', ...
+                    'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+                uicontrol(dlg, 'Style', 'edit', 'String', num2str(params.alpha), ...
+                    'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+                    'Callback', @setAlpha_);
+                y = y - lh;
+                uicontrol(dlg, 'Style', 'text', 'String', 'Information Criterion', ...
+                    'HorizontalAlignment', 'right', ...
+                    'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+                ICs = ["AIC-GMM", "BIC-GMM", "BIC-RSS", "HQC-GMM", "MDL"];
+                uicontrol(dlg, 'Style', 'popupmenu', ...
+                    'String', ICs, ...
+                    'Value', find(ICs == params.informationCriterion, 1), ...
+                    'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+                    'Callback', @setIC_);
+                y = 0;
+                uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
+                    'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
+                    'Callback', @ok_);
+                uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
+                    'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
+                    'Callback', 'delete(gcf)');
+                uiwait(dlg);
+            end
+            function setAlpha_(s,e)
+                params.alpha = str2num(s.String);
+            end
+            function setIC_(s,e)
+                params.informationCriterion = string(s.String{s.Value});
+            end
+            function ok_(varargin)
+                obj.spotProjectionIdealizationParams.DISC = params;
+                % propogate method/params to other channels?
+                otherChannels = obj.getOtherChannels();
+                if ~isempty(otherChannels)
+                    if questdlg('Propagate idealization method/params to all other channels?', 'Idealization') == "Yes"
+                        for channel = otherChannels
+                            channel.spotProjectionIdealizationMethod = obj.spotProjectionIdealizationMethod;
+                            channel.spotProjectionIdealizationParams = obj.spotProjectionIdealizationParams;
+                        end
+                    end
+                end
+                delete(dlg);
+            end
+        end
+        
+        function set.spotProjectionAutoIdealize(obj, tf)
+            obj.spotProjectionAutoIdealize = tf;
+            notify(obj, 'SpotProjectionChanged');
+        end
+        function toggleSpotProjectionAutoIdealize(obj)
+            obj.spotProjectionAutoIdealize = ~obj.spotProjectionAutoIdealize;
+            % propogate to other channels?
+            otherChannels = obj.getOtherChannels();
+            if ~isempty(otherChannels)
+                if questdlg('Propagate auto idealize status to all other channels?', 'Auto Idealize') == "Yes"
+                    for channel = otherChannels
+                        channel.spotProjectionAutoIdealize = obj.spotProjectionAutoIdealize;
+                    end
+                end
             end
         end
         
@@ -282,24 +413,61 @@ classdef Channel < handle
             end
         end
         
-        function [x,y] = getSpotProjection(obj, spot)
-            x = spot.projection.time;
-            y = spot.projection.data;
-            if isempty(y)
-                return
-            end
+        function updateSpotProjection(obj, spot)
+            spot.updateProjection(obj.selectedProjectionImageStack);
             % sum frame blocks?
-            if obj.sumEveryNFramesOfProjection > 1
-                n = obj.sumEveryNFramesOfProjection;
-                npts = floor(double(length(y)) / n) * n;
-                x = x(1:n:npts);
-                y0 = y;
-                y = y0(1:n:npts);
+            if obj.spotProjectionSumEveryNFrames > 1
+                n = obj.spotProjectionSumEveryNFrames;
+                npts = floor(double(length(spot.projection.data)) / n) * n;
+                if ~isempty(spot.projection.sampleInterval)
+                    spot.projection.sampleInterval = spot.projection.sampleInterval * n;
+                end
+                y = spot.projection.data(1:n:npts);
                 for k = 2:n
-                    y = y + y0(k:n:npts);
+                    y = y + spot.projection.data(k:n:npts);
+                end
+                spot.projection.data = y;
+            end
+        end
+        
+        function updateSpotProjectionIdealization(obj, spot)
+            if obj.spotProjectionIdealizationMethod == "DISC"
+                params = obj.spotProjectionIdealizationParams.DISC;
+                try
+                    disc_input = initDISC();
+                    disc_input.input_type = 'alpha_value';
+                    disc_input.input_value = params.alpha;
+                    disc_input.divisive = params.informationCriterion;
+                    disc_input.agglomerative = params.informationCriterion;
+                    disc_fit = runDISC(spot.projection.data, disc_input);
+                    spot.projection.ideal = disc_fit.ideal;
+                catch
+                    msgbox( ...
+                        {'Failed to find DISC functions.', ...
+                        'Download DISC from https://github.com/ChandaLab/DISC and add the DISC folder tree to your path.'}, ...
+                        'DISC Idealization');
                 end
             end
         end
+        
+%         function [x,y] = getSpotProjection(obj, spot)
+%             x = spot.projection.time;
+%             y = spot.projection.data;
+%             if isempty(y)
+%                 return
+%             end
+%             % sum frame blocks?
+%             if obj.spotProjectionSumEveryNFrames > 1
+%                 n = obj.spotProjectionSumEveryNFrames;
+%                 npts = floor(double(length(y)) / n) * n;
+%                 x = x(1:n:npts);
+%                 y0 = y;
+%                 y = y0(1:n:npts);
+%                 for k = 2:n
+%                     y = y + y0(k:n:npts);
+%                 end
+%             end
+%         end
         
         function tf = areSpotsMappedToOtherChannelSpots(obj, channel, dmax)
             if isempty(obj.spots) || isempty(channel.spots) ...
@@ -315,23 +483,6 @@ classdef Channel < handle
             else
                 tf = true;
             end
-        end
-        
-        function editLabel(obj)
-            answer = inputdlg({'label'}, 'Channel Label', 1, {char(obj.label)});
-            if isempty(answer)
-                return
-            end
-            obj.label = string(answer{1});
-        end
-        
-        function editSumEveryNFramesOfProjection(obj)
-            answer = inputdlg({'Sum blocks of N frames:'}, ...
-                'Sum Frames', 1, {num2str(obj.sumEveryNFramesOfProjection)});
-            if isempty(answer)
-                return
-            end
-            obj.sumEveryNFramesOfProjection = str2num(answer{1});
         end
         
         function loadNewImage(obj, filepath)

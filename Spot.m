@@ -100,11 +100,11 @@ classdef Spot < handle
                 return
             end
             nframes = imstack.numFrames;
+            obj.projection.sampleInterval = imstack.frameIntervalSec;
             if isempty(imstack.frameIntervalSec)
                 obj.projection.time = []; %reshape(1:nframes, [], 1);
                 obj.projection.timeUnits = 'frames';
             else
-                obj.projection.sampleInterval = imstack.frameIntervalSec;
                 obj.projection.time = []; %reshape(0:nframes-1, [], 1) .* imstack.frameIntervalSec;
                 obj.projection.timeUnits = 'seconds';
             end

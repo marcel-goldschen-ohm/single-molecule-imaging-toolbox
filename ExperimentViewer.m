@@ -33,19 +33,8 @@ classdef ExperimentViewer < handle
         tagsMaskEdit = gobjects(0);
         showSpotMarkersBtn = gobjects(0);
         zoomOnSelectedSpotBtn = gobjects(0);
-        
-        idealizationHeaderText = gobjects(0);
-        idealizationMethodText = gobjects(0);
-        idealizationMethodPopup = gobjects(0);
-        showIdealizationBtn = gobjects(0);
-        autoComputeIdealizationBtn = gobjects(0);
         idealizeBtn = gobjects(0);
         idealizeAllBtn = gobjects(0);
-        
-        discThresholdAlphaText = gobjects(0);
-        discThresholdAlphaEdit = gobjects(0);
-        discInformationCriteriaText = gobjects(0);
-        discInformationCriteriaPopup = gobjects(0);
     end
     
     properties (Access = private)
@@ -131,37 +120,12 @@ classdef ExperimentViewer < handle
                 'String', 'zoom on', 'Value', 0, ...
                 'Tooltip', 'zoom images on selected spots', ...
                 'Callback', @(varargin) obj.zoomOnSelectedSpotBtnPressed());
-            
-            obj.idealizationHeaderText = uicontrol(parent, 'Style', 'text', ...
-                'String', 'Idealization', 'HorizontalAlignment', 'left', ...
-                'ForegroundColor', [1 1 1], 'BackgroundColor', [0 0 0]);
-            obj.showIdealizationBtn = uicontrol(parent, 'Style', 'togglebutton', ...
-                'String', 'show', 'Value', 1, ...
-                'Tooltip', 'show projection idealization');
-            obj.autoComputeIdealizationBtn = uicontrol(parent, 'Style', 'togglebutton', ...
-                'String', 'auto', 'Value', 1, ...
-                'Tooltip', 'auto compute idealization');
             obj.idealizeBtn = uicontrol(parent, 'Style', 'pushbutton', ...
                 'String', 'idealize', ...
                 'Tooltip', 'idealize current spot');
             obj.idealizeAllBtn = uicontrol(parent, 'Style', 'pushbutton', ...
                 'String', 'idealize all', ...
                 'Tooltip', 'idealize all spots');
-            obj.idealizationMethodText = uicontrol(parent, 'Style', 'text', ...
-                'String', 'method', 'HorizontalAlignment', 'right');
-            obj.idealizationMethodPopup = uicontrol(parent, 'Style', 'popupmenu', ...
-                'String', {'DISC'}, 'Value', 1);
-            
-            obj.discThresholdAlphaText = uicontrol(parent, 'Style', 'text', ...
-                'String', char(hex2dec('03b1')), ...
-                'HorizontalAlignment', 'right');
-            obj.discThresholdAlphaEdit = uicontrol(parent, 'Style', 'edit', ...
-                'String', '0.05');
-            obj.discInformationCriteriaText = uicontrol(parent, 'Style', 'text', ...
-                'String', 'IC', ...
-                'HorizontalAlignment', 'right');
-            obj.discInformationCriteriaPopup = uicontrol(parent, 'Style', 'popupmenu', ...
-                'String', {'BIC-GMM'}, 'Value', 1);
             
 %             obj.Parent = parent; % calls resize() and updateResizeListener()
             obj.resize();
@@ -195,17 +159,8 @@ classdef ExperimentViewer < handle
                 obj.tagsMaskEdit ...
                 obj.showSpotMarkersBtn ...
                 obj.zoomOnSelectedSpotBtn ...
-                obj.idealizationHeaderText ...
-                obj.idealizationMethodText ...
-                obj.idealizationMethodPopup ...
-                obj.showIdealizationBtn ...
-                obj.autoComputeIdealizationBtn ...
                 obj.idealizeBtn ...
                 obj.idealizeAllBtn ...
-                obj.discThresholdAlphaText ...
-                obj.discThresholdAlphaEdit ...
-                obj.discInformationCriteriaText ...
-                obj.discInformationCriteriaPopup ...
                 ];
             delete(h(isgraphics(h)));
         end
@@ -259,6 +214,11 @@ classdef ExperimentViewer < handle
             end
             if ~isempty(obj.channelSpotProjectionViewers)
                 linkaxes(horzcat(obj.channelSpotProjectionViewers.projAxes), 'x');
+            end
+            
+            % update projections
+            for viewer = obj.channelSpotProjectionViewers
+                viewer.updateProjection();
             end
             
             % update listeners
@@ -333,33 +293,9 @@ classdef ExperimentViewer < handle
             y = y - lh;
             obj.showSpotMarkersBtn.Position = [x0 y .5*wc lh];
             obj.zoomOnSelectedSpotBtn.Position = [x0+.5*wc y .5*wc lh];
-            % idealization
-            y = y - margin - lh;
-            obj.idealizationHeaderText.Position = [x0 y wc lh];
             y = y - lh;
             obj.idealizeBtn.Position = [x0 y .5*wc lh];
             obj.idealizeAllBtn.Position = [x0+.5*wc y .5*wc lh];
-            y = y - lh;
-            obj.showIdealizationBtn.Position = [x0 y .5*wc lh];
-            obj.autoComputeIdealizationBtn.Position = [x0+.5*wc y .5*wc lh];
-            y = y - 20;
-            obj.idealizationMethodText.Position = [x0 y 50 20];
-            obj.idealizationMethodPopup.Position = [x0+50 y wc-50 20];
-            if obj.idealizationMethodPopup.String{obj.idealizationMethodPopup.Value} == "DISC"
-                y = y - lh;
-                obj.discThresholdAlphaText.Position = [x0 y 50 lh];
-                obj.discThresholdAlphaEdit.Position = [x0+50 y wc-50 lh];
-                obj.discThresholdAlphaText.Visible = 'on';
-                obj.discThresholdAlphaEdit.Visible = 'on';
-                y = y - 20;
-                obj.discInformationCriteriaText.Position = [x0 y 50 20];
-                obj.discInformationCriteriaPopup.Position = [x0+50 y wc-50 20];
-                obj.discInformationCriteriaText.Visible = 'on';
-                obj.discInformationCriteriaPopup.Visible = 'on';
-            else
-                obj.discInformationCriteriaText.Visible = 'off';
-                obj.discInformationCriteriaPopup.Visible = 'off';
-            end
             
             % visible channels
             nchannels = numel(obj.experiment.channels);
@@ -623,7 +559,7 @@ classdef ExperimentViewer < handle
             obj.experiment = obj.experiment;
             obj.resize();
             % toggle spot visibility
-            obj.showAllSpotsBtnPressed();
+            obj.showSpotMarkersBtnPressed();
         end
         
         function goToSpot(obj, k)

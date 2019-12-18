@@ -177,6 +177,9 @@ classdef ImageStack < handle
             else
                 label = obj.label;
             end
+            if ~isempty(obj.frameIntervalSec)
+                label = sprintf('%s@%.0fHz', label, 1.0 / obj.frameIntervalSec);
+            end
         end
         
         function editLabel(obj)
@@ -189,9 +192,6 @@ classdef ImageStack < handle
         
         function editFrameInterval(obj)
             answer = inputdlg({'Frame Interval (sec)'}, char(obj.label), 1, {num2str(obj.frameIntervalSec)});
-            if isempty(answer)
-                return
-            end
             obj.frameIntervalSec = str2num(answer{1});
         end
         
