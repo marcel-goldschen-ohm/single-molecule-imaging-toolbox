@@ -215,7 +215,7 @@ classdef ChannelImageViewer < ImageStackViewer
         
         function updateSelectedSpotMarker(obj)
             %UPDATESELECTEDSPOTMARKER Update graphics to show selected spot location.
-            if isempty(obj.channel.selectedSpot)
+            if isempty(obj.channel.selectedSpot) || isempty(obj.channel.selectedSpot.xy)
                 obj.selectedSpotMarker.XData = nan;
                 obj.selectedSpotMarker.YData = nan;
             else

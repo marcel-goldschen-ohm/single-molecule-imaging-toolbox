@@ -1,4 +1,4 @@
-classdef Spot < handle
+classdef (ConstructOnLoad) Spot < handle
     %SPOT Summary of this class goes here
     %   Detailed explanation goes here
     %
@@ -27,7 +27,7 @@ classdef Spot < handle
             ]);
         
         % spot image intensity projection across time frames
-        projection = SpotProjection;
+        projection = SpotProjection.empty;
     end
     
     events
@@ -39,6 +39,7 @@ classdef Spot < handle
     methods
         function obj = Spot()
             %SPOT Constructor.
+            obj.projection = SpotProjection;
         end
         
         function set.xy(obj, xy)

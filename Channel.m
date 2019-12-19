@@ -103,6 +103,28 @@ classdef Channel < handle
             notify(obj, 'SpotsChanged');
         end
         
+        function setSpotProjections(obj, x, y)
+            nproj = size(y, 2);
+            spots = obj.spots;
+            if numel(spots) ~= nproj
+                spots = Spot.empty(0,1);
+                for k = 1:nproj
+                    spots(k,1) = Spot;
+                end
+            end
+            for k = 1:nproj
+                if isequal(size(x), size(y))
+                    spots(k).projection.time = x(:,k);
+                else
+                    spots(k).projection.time = x;
+                end
+                spots(k).projection.data = y(:,k);
+            end
+            if numel(obj.spots) ~= nproj
+                obj.spots = spots;
+            end
+        end
+        
         function set.alignedTo(obj, alignedTo)
             obj.alignedTo = alignedTo;
             notify(obj, 'AlignedToChanged');
@@ -450,24 +472,54 @@ classdef Channel < handle
             end
         end
         
-%         function [x,y] = getSpotProjection(obj, spot)
-%             x = spot.projection.time;
-%             y = spot.projection.data;
-%             if isempty(y)
-%                 return
-%             end
-%             % sum frame blocks?
-%             if obj.spotProjectionSumEveryNFrames > 1
-%                 n = obj.spotProjectionSumEveryNFrames;
-%                 npts = floor(double(length(y)) / n) * n;
-%                 x = x(1:n:npts);
-%                 y0 = y;
-%                 y = y0(1:n:npts);
-%                 for k = 2:n
-%                     y = y + y0(k:n:npts);
-%                 end
-%             end
-%         end
+        function simulateSpotProjections(obj)
+            % dialog
+            answer = inputdlg( ...
+                {'# spots', '# sample points', 'sample interval (sec)', ...
+                'starting probabilities', 'transition rates (/sec)', ...
+                'emission means', 'emission sigmas', ...
+                '# sites/spot'}, ...
+                'Simulation', 1, ...
+                {'100', '1000', '0.1', ...
+                '0.5, 0.5', '0, 1; 1, 0', ...
+                '0, 1', '0.25, 0.33', ...
+                '1'});
+            if isempty(answer)
+                return
+            end
+            nspots = str2num(answer{1});
+            npts = str2num(answer{2});
+            dt = str2num(answer{3});
+            model.p0 = Channel.str2mat(answer{4});
+            Q = Channel.str2mat(answer{5});
+            Q = Q - diag(diag(Q));
+            Q = Q - diag(sum(Q, 2));
+            nstates = size(Q, 1);
+            model.A = ones(nstates, nstates) - exp(-Q .* dt); 
+            if isempty(model.p0)
+                % equilibrium
+                S = [Q ones(nstates, 1)];
+                model.p0 = ones(1, nstates) / (S * (S'));        
+            end
+            mu = Channel.str2mat(answer{6});
+            sigma = Channel.str2mat(answer{7});
+            for k = 1:nstates
+                model.pd(k) = makedist('Normal', 'mu', mu(k), 'sigma', sigma(k));
+            end
+            nsites = str2num(answer{8});
+            % model sanity
+            model.p0 = model.p0 ./ sum(model.p0);
+            model.A = model.A - diag(diag(model.A));
+            model.A = model.A + diag(1 - sum(model.A, 2));
+            % simulate
+            disp('Simulating spot projections...');
+            [x, y, ideal] = Channel.simulateProjections(nspots, npts, dt, model, nsites);
+            obj.setSpotProjections(x, y);
+            for k = 1:nspots
+                obj.spots(k).projection.known = ideal(:,k);
+            end
+            disp('... Done.');
+        end
         
         function tf = areSpotsMappedToOtherChannelSpots(obj, channel, dmax)
             if isempty(obj.spots) || isempty(channel.spots) ...
@@ -673,10 +725,10 @@ classdef Channel < handle
                 nspots = numel(props);
                 if nspots
                     newSpots = Spot.empty(0,1);
-                    newSpots(nspots,1) = Spot;
                     for k = 1:nspots
-                        newSpots(k).xy = props(k).Centroid;
-                        newSpots(k).props = props(k);
+                        newSpots(k,1) = Spot;
+                        newSpots(k,1).xy = props(k).Centroid;
+                        newSpots(k,1).props = props(k);
                     end
                     obj.spots = newSpots;
                 else
@@ -687,9 +739,9 @@ classdef Channel < handle
                 nspots = size(xy,1);
                 if nspots
                     newSpots = Spot.empty(0,1);
-                    newSpots(nspots,1) = Spot;
                     for k = 1:nspots
-                        newSpots(k).xy = xy(k,:);
+                        newSpots(k,1) = Spot;
+                        newSpots(k,1).xy = xy(k,:);
                     end
                     obj.spots = newSpots;
                 else
@@ -747,6 +799,7 @@ classdef Channel < handle
             if any(obj.spots(idx) == obj.selectedSpot)
                 obj.selectedSpot = Spot.empty;
             end
+            delete(obj.spots(idx));
             obj.spots(idx) = [];
             % remove spot(s) from all other 1 to 1 mapped channels?
             otherChannels = obj.getOtherChannels();
@@ -757,6 +810,7 @@ classdef Channel < handle
                             if any(channel.spots(idx) == channel.selectedSpot)
                                 channel.selectedSpot = Spot.empty;
                             end
+                            delete(channel.spots(idx));
                             channel.spots(idx) = [];
                         end
                     end
@@ -954,6 +1008,59 @@ classdef Channel < handle
                 T = T1;
             elseif ~isempty(T2)
                 T = invert(T2);
+            end
+        end
+        
+        function [x, y, ideal] = simulateProjections(nspots, npts, dt, model, nsites)
+            x = reshape([0:npts-1] .* dt, [], 1);
+            y = zeros(npts, nspots, nsites);
+            % states
+            states = zeros(npts, nspots, nsites, 'uint8');
+            cump0 = cumsum(model.p0);
+            cumA = cumsum(model.A, 2);
+            rn = rand(npts, nspots, nsites);
+            for i = 1:nspots
+                for j = 1:nsites
+                    t = 1;
+                    states(t,i,j) = find(rn(t,i,j) <= cump0, 1);
+                    for t = 2:npts
+                        states(t,i,j) = find(rn(t,i,j) <= cumA(states(t-1,i,j),:), 1);
+                    end
+                end
+            end
+            % noisy & ideal
+            ideal = zeros(npts, nspots, nsites);
+            for k = 1:numel(model.pd)
+                idx = states == k;
+                y(idx) = random(model.pd(k), nnz(idx), 1);
+                ideal(idx) = mean(model.pd(k));
+            end
+            % add sites together
+            if nsites > 1
+                y = sum(y, 3);
+                ideal = sum(ideal, 3);
+            end
+        end
+        
+        function mat = str2mat(str)
+            str = strtrim(str);
+            if startsWith(str, '[')
+                str = strip(str, 'left', '[');
+            end
+            if endsWith(str, ']')
+                str = strip(str, 'right', ']');
+            end
+            rows = split(str, ';');
+            nrows = numel(rows);
+            for i = 1:nrows
+                cols = split(rows{i}, ',');
+                if i == 1
+                    ncols = numel(cols);
+                    mat = zeros(nrows, ncols);
+                end
+                for j = 1:ncols
+                    mat(i, j) = str2num(cols{j});
+                end
             end
         end
     end

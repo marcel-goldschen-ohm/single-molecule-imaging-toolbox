@@ -6,6 +6,7 @@ classdef SpotProjection < handle
         time = [];
         data = [];
         ideal = [];
+        known = []; % e.g. for simulations
         
         timeUnits = 'frames';
         dataUnits = 'au';
@@ -39,7 +40,15 @@ classdef SpotProjection < handle
         end
         
         function set.time(obj, x)
-            obj.time = reshape(x, [], 1);
+            if isempty(x)
+                obj.time = [];
+                obj.sampleInterval = [];
+            elseif numel(x) == 1
+                obj.time = [];
+                obj.sampleInterval = x;
+            else
+                obj.time = reshape(x, [], 1);
+            end
         end
         
         function y = get.data(obj)
@@ -59,16 +68,30 @@ classdef SpotProjection < handle
         
         function set.data(obj, y)
             obj.data = reshape(y, [], 1);
-            if ~isequal(size(obj.data), size(obj.ideal))
-                obj.ideal = [];
-            end
         end
         
+%         function y = get.ideal(obj)
+%             if isequal(size(obj.ideal), size(obj.data))
+%                 y = obj.ideal;
+%             else
+%                 y = [];
+%             end
+%         end
+        
         function set.ideal(obj, y)
-            y = reshape(y, [], 1);
-            if isequal(size(y), size(obj.data))
-                obj.ideal = y;
-            end
+            obj.ideal = reshape(y, [], 1);
+        end
+        
+%         function y = get.known(obj)
+%             if isequal(size(obj.known), size(obj.data))
+%                 y = obj.known;
+%             else
+%                 y = [];
+%             end
+%         end
+        
+        function set.known(obj, y)
+            obj.known = reshape(y, [], 1);
         end
         
         function isMasked = getIsMasked(obj)

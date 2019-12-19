@@ -31,8 +31,10 @@ classdef ExperimentViewer < handle
         spotTagsEdit = gobjects(0);
         tagsMaskText = gobjects(0);
         tagsMaskEdit = gobjects(0);
-        showSpotMarkersBtn = gobjects(0);
-        zoomOnSelectedSpotBtn = gobjects(0);
+        showSpotMarkersCBox = gobjects(0);
+        zoomOnSelectedSpotCBox = gobjects(0);
+        
+        simulateBtn = gobjects(0);
         idealizeBtn = gobjects(0);
         idealizeAllBtn = gobjects(0);
     end
@@ -112,20 +114,24 @@ classdef ExperimentViewer < handle
                 'String', 'tag mask', 'HorizontalAlignment', 'right');
             obj.tagsMaskEdit = uicontrol(parent, 'Style', 'edit', ...
                 'Tooltip', 'navigate only spots with any of these tags');
-            obj.showSpotMarkersBtn = uicontrol(parent, 'Style', 'togglebutton', ...
-                'String', 'show markers', 'Value', 1, ...
+            obj.showSpotMarkersCBox = uicontrol(parent, 'Style', 'checkbox', ...
+                'String', 'show image markers', 'Value', 1, ...
                 'Tooltip', 'show all spots on images', ...
-                'Callback', @(varargin) obj.showSpotMarkersBtnPressed());
-            obj.zoomOnSelectedSpotBtn = uicontrol(parent, 'Style', 'togglebutton', ...
-                'String', 'zoom on', 'Value', 0, ...
+                'Callback', @(varargin) obj.updateShowSpotMarkers());
+            obj.zoomOnSelectedSpotCBox = uicontrol(parent, 'Style', 'checkbox', ...
+                'String', 'zoom on selected', 'Value', 0, ...
                 'Tooltip', 'zoom images on selected spots', ...
-                'Callback', @(varargin) obj.zoomOnSelectedSpotBtnPressed());
+                'Callback', @(varargin) obj.updateZoomOnSelectedSpot());
+            
+            obj.simulateBtn = uicontrol(parent, 'Style', 'pushbutton', ...
+                'String', 'simulate projections', ...
+                'Callback', @(varargin) obj.simulate());
             obj.idealizeBtn = uicontrol(parent, 'Style', 'pushbutton', ...
-                'String', 'idealize', ...
-                'Tooltip', 'idealize current spot');
+                'String', 'idealize visible spots', ...
+                'Callback', @(varargin) obj.idealize());
             obj.idealizeAllBtn = uicontrol(parent, 'Style', 'pushbutton', ...
-                'String', 'idealize all', ...
-                'Tooltip', 'idealize all spots');
+                'String', 'idealize all spots', ...
+                'Callback', @(varargin) obj.idealizeAll());
             
 %             obj.Parent = parent; % calls resize() and updateResizeListener()
             obj.resize();
@@ -157,10 +163,11 @@ classdef ExperimentViewer < handle
                 obj.spotTagsEdit ...
                 obj.tagsMaskText ...
                 obj.tagsMaskEdit ...
-                obj.showSpotMarkersBtn ...
-                obj.zoomOnSelectedSpotBtn ...
+                obj.showSpotMarkersCBox ...
+                obj.zoomOnSelectedSpotCBox ...
                 obj.idealizeBtn ...
                 obj.idealizeAllBtn ...
+                obj.simulateBtn ...
                 ];
             delete(h(isgraphics(h)));
         end
@@ -290,12 +297,23 @@ classdef ExperimentViewer < handle
             y = y - lh;
             obj.tagsMaskText.Position = [x0 y 50 lh];
             obj.tagsMaskEdit.Position = [x0+50 y wc-50 lh];
+            if obj.showImagesBtn.Value || obj.showImagesAndProjectionsBtn.Value
+                y = y - lh;
+                obj.showSpotMarkersCBox.Position = [x0 y wc lh];
+                y = y - lh;
+                obj.zoomOnSelectedSpotCBox.Position = [x0 y wc lh];
+                obj.showSpotMarkersCBox.Visible = 'on';
+                obj.zoomOnSelectedSpotCBox.Visible = 'on';
+            else
+                obj.showSpotMarkersCBox.Visible = 'off';
+                obj.zoomOnSelectedSpotCBox.Visible = 'off';
+            end
             y = y - lh;
-            obj.showSpotMarkersBtn.Position = [x0 y .5*wc lh];
-            obj.zoomOnSelectedSpotBtn.Position = [x0+.5*wc y .5*wc lh];
+            obj.simulateBtn.Position = [x0 y wc lh];
             y = y - lh;
-            obj.idealizeBtn.Position = [x0 y .5*wc lh];
-            obj.idealizeAllBtn.Position = [x0+.5*wc y .5*wc lh];
+            obj.idealizeBtn.Position = [x0 y wc lh];
+            y = y - lh;
+            obj.idealizeAllBtn.Position = [x0 y wc lh];
             
             % visible channels
             nchannels = numel(obj.experiment.channels);
@@ -611,15 +629,30 @@ classdef ExperimentViewer < handle
             end
         end
         
-        function showSpotMarkersBtnPressed(obj)
+        function updateShowSpotMarkers(obj)
             for viewer = obj.channelImageViewers
                 for marker = viewer.spotMarkers
-                    marker.Visible = obj.showSpotMarkersBtn.Value;
+                    marker.Visible = obj.showSpotMarkersCBox.Checked == "on";
                 end
             end
         end
         
-        function zoomOnSelectedSpotBtnPressed(obj)
+        function updateZoomOnSelectedSpot(obj)
+        end
+        
+        function simulate(obj)
+            vischannels = obj.getVisibleChannelIndices();
+            if isempty(vischannels)
+                return
+            end
+            channel = obj.experiment.channels(vischannels(1));
+            channel.simulateSpotProjections();
+        end
+        
+        function idealize(obj)
+        end
+        
+        function idealizeAll(obj)
         end
     end
 end
