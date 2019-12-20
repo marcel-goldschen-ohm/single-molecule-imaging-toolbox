@@ -3,23 +3,37 @@ classdef SpotProjection < handle
     %   Detailed explanation goes here
     
     properties
-        time = [];
-        data = [];
-        ideal = [];
-        known = []; % e.g. for simulations
+        rawTime = []; % Tx1 time array OR 1x1 sample interval
+        rawData = []; % Tx1 data array
         
         timeUnits = 'frames';
         dataUnits = 'au';
         
-        % Optionally specify time only by a sample interval.
-        sampleInterval = [];
+        ideal = []; % idealization of adjustedData
+        known = []; % e.g. for simulations
+        
+        % optional masking of raw data
+        isMasked = false; % 1x1 (uniform) OR Tx1 (nonuniform), true=masked
         
         % adjustments to raw data
         offsetData = 0; % 1x1 (uniform) OR Tx1 (nonuniform) baseline offset
         scaleData = 1; % 1x1 (uniform) OR Tx1 (nonuniform) scale factor
         
-        % optional masking of raw data points
-        isMasked = false; % 1x1 (uniform) OR Tx1 (nonuniform), F=ok, T=masked
+        % sum blocks of frames
+        sumEveryNFrames = 1;
+        
+        % filtering
+        % ...
+        
+        % idealization
+        idealizationMethod = "";
+        idealizationParams = struct;
+    end
+    
+    properties (Dependent)
+        time
+        data
+        mask % true=masked
     end
     
     methods
@@ -27,113 +41,151 @@ classdef SpotProjection < handle
             %SPOTPROJECTION Constructor.
         end
         
-        function x = get.time(obj)
-            if isequal(size(obj.time), size(obj.data))
-                x = obj.time;
-            elseif ~isempty(obj.data) && ~isempty(obj.sampleInterval)
-                x = obj.sampleInterval .* reshape([0:size(obj.data,1)-1], [], 1);
-            elseif ~isempty(obj.data)
-                x = reshape([1:size(obj.data,1)], [], 1);
-            else
-                x = [];
-            end
+        function set.rawTime(obj, x)
+            obj.rawTime = reshape(x, [], 1);
+        end
+        function set.rawData(obj, y)
+            obj.rawData = reshape(y, [], 1);
+        end
+        function set.ideal(obj, y)
+            obj.ideal = reshape(y, [], 1);
+        end
+        function set.known(obj, y)
+            obj.known = reshape(y, [], 1);
+        end
+        function set.isMasked(obj, y)
+            obj.isMasked = reshape(y, [], 1);
+        end
+        function set.offsetData(obj, y)
+            obj.offsetData = reshape(y, [], 1);
+        end
+        function set.scaleData(obj, y)
+            obj.scaleData = reshape(y, [], 1);
         end
         
-        function set.time(obj, x)
-            if isempty(x)
-                obj.time = [];
-                obj.sampleInterval = [];
-            elseif numel(x) == 1
-                obj.time = [];
-                obj.sampleInterval = x;
+        function x = get.time(obj)
+            npts = size(obj.rawData, 1);
+            if npts == 0
+                x = [];
+                return
+            end
+            if isempty(obj.rawTime)
+                % frames
+                x = reshape([1:npts], [], 1);
+            elseif numel(obj.rawTime) == 1
+                % sample interval
+                dt = obj.rawTime;
+                x = dt .* reshape([0:npts-1], [], 1);
+            elseif size(obj.rawTime, 1) == npts
+                % time pts
+                x = obj.rawTime;
             else
-                obj.time = reshape(x, [], 1);
+                % should NOT happen
+                x = [];
+            end
+            if ~isempty(x) && obj.sumEveryNFrames > 1
+                n = obj.sumEveryNFrames;
+                npts = floor(double(length(x)) / n) * n;
+                x = x(1:n:npts);
             end
         end
         
         function y = get.data(obj)
-            y = obj.data;
+            y = obj.rawData;
             if isempty(y)
                 return
             end
-            % offset
-            if obj.offsetData
+            % offset raw
+            if obj.offsetData && (numel(obj.offsetData) == 1 || size(obj.offsetData, 1) == size(y, 1))
                 y = y + obj.offsetData;
             end
-            % scale
-            if obj.scaleData ~= 1
+            % scale raw
+            if obj.scaleData ~= 1 && (numel(obj.scaleData) == 1 || size(obj.scaleData, 1) == size(y, 1))
                 y = y .* obj.scaleData;
             end
+            % sum frame blocks?
+            if obj.sumEveryNFrames > 1
+                n = obj.sumEveryNFrames;
+                npts = floor(double(length(y)) / n) * n;
+                y0 = y;
+                y = y0(1:n:npts);
+                for k = 2:n
+                    y = y + y0(k:n:npts);
+                end
+            end
+            % offset summed frames
+            if obj.offsetData && size(obj.offsetData, 1) == size(y, 1)
+                y = y + obj.offsetData;
+            end
+            % scale summed frames
+            if obj.scaleData ~= 1 && size(obj.scaleData, 1) == size(y, 1)
+                y = y .* obj.scaleData;
+            end
+            % filter
+            % ...
         end
         
-        function set.data(obj, y)
-            obj.data = reshape(y, [], 1);
-        end
-        
-%         function y = get.ideal(obj)
-%             if isequal(size(obj.ideal), size(obj.data))
-%                 y = obj.ideal;
-%             else
-%                 y = [];
-%             end
-%         end
-        
-        function set.ideal(obj, y)
-            obj.ideal = reshape(y, [], 1);
-        end
-        
-%         function y = get.known(obj)
-%             if isequal(size(obj.known), size(obj.data))
-%                 y = obj.known;
-%             else
-%                 y = [];
-%             end
-%         end
-        
-        function set.known(obj, y)
-            obj.known = reshape(y, [], 1);
-        end
-        
-        function isMasked = getIsMasked(obj)
-            if numel(obj.isMasked) == 1
-                isMasked = repmat(obj.isMasked, size(obj.Data));
+        function tf = get.mask(obj)
+            % true = masked
+            if isempty(obj.isMasked)
+                % no mask
+                tf = [];
+                return
+            elseif numel(obj.isMasked) == 1
+                % uniform mask
+                tf = reshape(repmat(obj.isMasked, size(obj.data)), [], 1);
+                return
+            end
+            nraw = size(obj.rawData, 1);
+            nadj = size(obj.data, 1);
+            nmask = size(obj.isMasked, 1);
+            if nmask == nadj
+                % mask data
+                tf = obj.isMasked;
+            elseif nmask == nraw
+                % convert raw data mask to summed frames data mask
+                n = obj.sumEveryNFrames;
+                tf = false(nadj, n);
+                for k = 1:n
+                    tf(:,k) = obj.isMasked(k:n:n*nadj);
+                end
+                tf = any(tf, 2);
             else
-                isMasked = obj.isMasked;
+                % should NOT happen
+                tf = [];
             end
         end
         
-        function idealize(obj, method, options)
-%             p = inputParser;
-%             p.addOptional('options', struct());
-%             p.parse(options);
-%             options = p.Results.options;
-            if ~exist('options', 'var')
-                options = struct();
+        function idealize(obj, method, params)
+            if ~exist('method', 'var')
+                method = obj.idealizationMethod;
+            end
+            if ~exist('params', 'var')
+                params = obj.idealizationParams;
             end
             if method == "DISC"
-                obj.idealizeDISC(options);
+                try
+                    disc_input = initDISC();
+                    if isfield(params, 'alpha')
+                        disc_input.input_type = 'alpha_value';
+                        disc_input.input_value = params.alpha;
+                    end
+                    if isfield(params, 'informationCriterion')
+                        disc_input.divisive = params.informationCriterion;
+                        disc_input.agglomerative = params.informationCriterion;
+                    end
+                    disc_fit = runDISC(obj.data, disc_input);
+                    obj.ideal = disc_fit.ideal;
+                catch
+                    errordlg('Requires DISC (https://github.com/ChandaLab/DISC)', 'DISC');
+                    return
+                end
+            else
+                % unkown method
+                return
             end
-        end
-        
-        function idealizeDISC(obj, options)
-%             p = inputParser;
-%             p.addOptional('options', struct());
-%             p.parse(options);
-%             options = p.Results.options;
-            if ~exist('options', 'var')
-                options = struct();
-            end
-            y = obj.adjustedData;
-            isMasked = obj.getIsMasked();
-            idx = ~isMasked;
-            try
-                disc_input = initDISC(options);
-                disc_fit = runDISC(y(idx), disc_input);
-                obj.idealizedData = nan(size(y));
-                obj.idealizedData(idx) = disc_fit.ideal;
-            catch
-                errordlg('Requires DISC (https://github.com/ChandaLab/DISC)', 'DISC');
-            end
+            obj.idealizationMethod = string(method);
+            obj.idealizationParams = params;
         end
     end
     

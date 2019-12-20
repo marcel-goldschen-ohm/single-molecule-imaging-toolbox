@@ -576,8 +576,7 @@ classdef ExperimentViewer < handle
         function refreshUi(obj)
             obj.experiment = obj.experiment;
             obj.resize();
-            % toggle spot visibility
-            obj.showSpotMarkersBtnPressed();
+            obj.updateShowSpotMarkers();
         end
         
         function goToSpot(obj, k)

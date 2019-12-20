@@ -3,9 +3,9 @@ classdef Channel < handle
     %   Detailed explanation goes here
     
     properties
+        % DATA PROPERTIES
+        
         label = "Channel";
-        color = [0 1 0]; % [r g b]
-        notes = '';
         
         % Row vector of 2D images or 3D image stacks.
         % e.g. main image stack, spot mask image, alignment image, etc.
@@ -23,8 +23,7 @@ classdef Channel < handle
         % Parent experiment handle.
         Parent = Experiment.empty;
         
-        % BELOW PROPERTIES ARE PRIMARILY FOR THE USER INTERFACE
-        % THEY MOSTLY JUST REFER TO THE ABOVE DATA PROPERTIES
+        % USER INTERFACE PROPERTIES
         
         % Selected image. Should reference one of the channel's images.
         selectedImage = ImageStack.empty;
@@ -37,7 +36,7 @@ classdef Channel < handle
         % If true, setting selectedSpot in this channel will automatically
         % set the selectedSpot in all other channels in the parent
         % experiment to their mapped spots or locations.
-        autoSelectAlignedSpotsInOtherChannels = true;
+        autoSelectMappedSpotsInOtherChannels = true;
         
         % Image stack to use for spot projections. Should reference one of
         % the channel's images.
@@ -48,16 +47,17 @@ classdef Channel < handle
         overlayColorChannels = [2 1 2]; % green-magenta
         
         % Spot projection options.
-        spotProjectionSumEveryNFrames = 1;
         spotProjectionHistogramNumBins = 80;
         spotProjectionHistogramSqrtCounts = false;
         spotProjectionIdealizationMethod = "";
         spotProjectionIdealizationParams = struct;
-        spotProjectionAutoIdealize = true;
+        spotProjectionAutoIdealize = true; % auto idealize visible projection
     end
     
     properties (Dependent)
         selectedImageFrame
+        querySpot
+        spotProjectionSumEveryNFrames
     end
     
     events
@@ -81,9 +81,10 @@ classdef Channel < handle
         
         function set.label(obj, label)
             obj.label = string(label);
+            notify(obj, 'LabelChanged');
         end
         function editLabel(obj)
-            answer = inputdlg({'label'}, 'Channel Label', 1, {char(obj.label)});
+            answer = inputdlg({'Label'}, 'Channel Label', 1, {char(obj.label)});
             if isempty(answer)
                 return
             end
@@ -104,6 +105,11 @@ classdef Channel < handle
         end
         
         function setSpotProjections(obj, x, y)
+            % x = [] => frames
+            % x = dt => sample interval (sec)
+            % x = [Nx1] => time samples (sec)
+            % x = [NxM] => columns are time samples (sec) for M spots
+            % y = [NxM] => columns are projections for M spots
             nproj = size(y, 2);
             spots = obj.spots;
             if numel(spots) ~= nproj
@@ -132,6 +138,8 @@ classdef Channel < handle
         
         function set.Parent(obj, h)
             obj.Parent = h;
+            % make sure Parent experiment's list of channels contains this
+            % channel
             if ~isempty(obj.Parent) && ~any(obj.Parent.channels == obj)
                 obj.Parent.channels = [obj.Parent.channels obj];
             end
@@ -140,18 +148,14 @@ classdef Channel < handle
         
         function set.selectedImage(obj, h)
             if isempty(h)
-                %if ~isempty(obj.selectedImage)
-                    obj.selectedImage = ImageStack.empty;
-                    obj.updateOverlayInOtherChannels();
-                    notify(obj, 'SelectedImageChanged');
-                %end
+                obj.selectedImage = ImageStack.empty;
+                obj.updateOverlayInOtherChannels();
+                notify(obj, 'SelectedImageChanged');
             elseif ~isempty(obj.images) && any(obj.images == h)
                 % h is in obj.images
-                %if ~isequal(obj.selectedImage, h)
-                    obj.selectedImage = h;
-                    obj.updateOverlayInOtherChannels();
-                    notify(obj, 'SelectedImageChanged');
-                %end
+                obj.selectedImage = h;
+                obj.updateOverlayInOtherChannels();
+                notify(obj, 'SelectedImageChanged');
             else
                 % h is NOT in obj.images
                 % If the current selected image is valid, leave it alone.
@@ -176,35 +180,37 @@ classdef Channel < handle
             end
         end
         
-        function frame = get.selectedImageFrame(obj)
-            frame = [];
-            if ~isempty(obj.selectedImage)
-                frame = obj.selectedImage.getFrame();
-            end
-        end
-        
         function set.selectedSpot(obj, selectedSpot)
-            if obj.autoSelectAlignedSpotsInOtherChannels && ~isempty(obj.Parent)
-                obj.selectAlignedSpotsInOtherChannels(selectedSpot);
+            if obj.autoSelectMappedSpotsInOtherChannels && ~isempty(obj.Parent)
+                otherChannels = obj.getOtherChannels();
+                if ~isempty(otherChannels)
+                    obj.selectMappedSpotsInOtherChannels(selectedSpot, otherChannels);
+                end
             end
             obj.selectedSpot = selectedSpot;
             notify(obj, 'SelectedSpotChanged');
         end
         
-        function selectAlignedSpotsInOtherChannels(obj, selectedSpot)
+        function selectMappedSpotsInOtherChannels(obj, selectedSpot, otherChannels)
             if ~exist('selectedSpot', 'var')
                 selectedSpot = obj.selectedSpot;
+            end
+            if ~exist('otherChannels', 'var')
+                otherChannels = obj.getOtherChannels();
+            end
+            if isempty(otherChannels)
+                return
             end
             idx = [];
             if ~isempty(selectedSpot) && ~isempty(obj.spots)
                 idx = find(obj.spots == selectedSpot, 1);
             end
             nspots = numel(obj.spots);
-            for channel = obj.getOtherChannels()
-                tmp = channel.autoSelectAlignedSpotsInOtherChannels;
-                channel.autoSelectAlignedSpotsInOtherChannels = false;
+            for channel = otherChannels
+                tmp = channel.autoSelectMappedSpotsInOtherChannels;
+                channel.autoSelectMappedSpotsInOtherChannels = false;
                 if isempty(selectedSpot)
-                    % clear selected spot in all channels
+                    % clear selected spot in other channel
                     channel.selectedSpot = Spot.empty;
                 else
                     isMapped = ~isempty(idx) && numel(channel.spots) >= idx;
@@ -218,32 +224,24 @@ classdef Channel < handle
                         channel.selectedSpot = alignedSpot;
                     end
                 end
-                channel.autoSelectAlignedSpotsInOtherChannels = tmp;
+                channel.autoSelectMappedSpotsInOtherChannels = tmp;
             end
         end
         
         function set.selectedProjectionImageStack(obj, h)
             if isempty(h)
-                %if ~isempty(obj.selectedProjectionImageStack)
-                    obj.selectedProjectionImageStack = ImageStack.empty;
-                    notify(obj, 'SelectedProjectionImageStackChanged');
-                %end
+                obj.selectedProjectionImageStack = ImageStack.empty;
+                notify(obj, 'SelectedProjectionImageStackChanged');
             elseif ~isempty(obj.images) && any(obj.images == h)
                 % h is in obj.images
-                %if ~isequal(obj.selectedProjectionImageStack, h)
-                    obj.selectedProjectionImageStack = h;
-                    notify(obj, 'SelectedProjectionImageStackChanged');
-                %end
+                obj.selectedProjectionImageStack = h;
+                notify(obj, 'SelectedProjectionImageStackChanged');
             else
                 % h is NOT in obj.images
                 % If the current selected image is valid, leave it alone.
                 % Otherwise, select the first image stack.
                 if isempty(obj.selectedProjectionImageStack) || ~any(obj.images == obj.selectedProjectionImageStack)
-                    prev = obj.selectedProjectionImageStack;
                     obj.selectFirstValidProjectionImageStack();
-                    %if ~isequal(prev, obj.selectedProjectionImageStack)
-                        notify(obj, 'SelectedProjectionImageStackChanged');
-                    %end
                 end
             end
         end
@@ -302,24 +300,10 @@ classdef Channel < handle
             obj.overlayColorChannels = colors;
         end
         
-        function set.spotProjectionSumEveryNFrames(obj, n)
-            obj.spotProjectionSumEveryNFrames = n;
-            notify(obj, 'SpotProjectionChanged');
-        end
-        function editSumEveryNFrames(obj)
-            answer = inputdlg({'Sum blocks of N frames:'}, ...
-                'Sum Frames', 1, {num2str(obj.spotProjectionSumEveryNFrames)});
-            if isempty(answer)
-                return
-            end
-            obj.spotProjectionSumEveryNFrames = str2num(answer{1});
-        end
-        
         function set.spotProjectionHistogramNumBins(obj, n)
             obj.spotProjectionHistogramNumBins = n;
             notify(obj, 'SpotProjectionChanged');
         end
-        
         function set.spotProjectionHistogramSqrtCounts(obj, tf)
             obj.spotProjectionHistogramSqrtCounts = tf;
             notify(obj, 'SpotProjectionChanged');
@@ -331,30 +315,35 @@ classdef Channel < handle
         end
         function setSpotProjectionIdealizationMethod(obj, method)
             obj.spotProjectionIdealizationMethod = method;
-            obj.editSpotProjectionIdealizationParams();
+            obj.editSpotProjectionIdealizationParams(); % will ask about propagating to other channels
         end
         
         function set.spotProjectionIdealizationParams(obj, params)
             obj.spotProjectionIdealizationParams = params;
             notify(obj, 'SpotProjectionChanged');
         end
-        function editSpotProjectionIdealizationParams(obj)
+        function editSpotProjectionIdealizationParams(obj, propagateToAllOtherChannels)
             if isempty(obj.spotProjectionIdealizationMethod)
                 return
             end
             if obj.spotProjectionIdealizationMethod == "DISC"
                 % default params
-                if isfield(obj.spotProjectionIdealizationParams, 'DISC')
-                    params = obj.spotProjectionIdealizationParams.DISC;
-                    if ~isfield(params, 'alpha')
-                        params.alpha = 0.05;
+                params.alpha = 0.05;
+                params.informationCriterion = "BIC-GMM";
+                try
+                    alpha = obj.spotProjectionIdealizationParams.alpha;
+                    if alpha > 0 && alpha < 1
+                        params.alpha = alpha;
                     end
-                    if ~isfield(params, 'informationCriterion')
-                        params.informationCriterion = "BIC-GMM";
+                catch
+                end
+                ICs = ["AIC-GMM", "BIC-GMM", "BIC-RSS", "HQC-GMM", "MDL"];
+                try
+                    IC = string(obj.spotProjectionIdealizationParams.informationCriterion);
+                    if any(ICs == IC)
+                        params.informationCriterion = IC;
                     end
-                else
-                    params.alpha = 0.05;
-                    params.informationCriterion = "BIC-GMM";
+                catch
                 end
                 % params dialog
                 dlg = dialog('Name', 'DISC');
@@ -369,17 +358,16 @@ classdef Channel < handle
                     'Units', 'pixels', 'Position', [0, y, w/2, lh]);
                 uicontrol(dlg, 'Style', 'edit', 'String', num2str(params.alpha), ...
                     'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
-                    'Callback', @setAlpha_);
+                    'Callback', @setDiscAlpha_);
                 y = y - lh;
                 uicontrol(dlg, 'Style', 'text', 'String', 'Information Criterion', ...
                     'HorizontalAlignment', 'right', ...
                     'Units', 'pixels', 'Position', [0, y, w/2, lh]);
-                ICs = ["AIC-GMM", "BIC-GMM", "BIC-RSS", "HQC-GMM", "MDL"];
                 uicontrol(dlg, 'Style', 'popupmenu', ...
                     'String', ICs, ...
                     'Value', find(ICs == params.informationCriterion, 1), ...
                     'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
-                    'Callback', @setIC_);
+                    'Callback', @setDiscInformationCriterion_);
                 y = 0;
                 uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
                     'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
@@ -389,24 +377,31 @@ classdef Channel < handle
                     'Callback', 'delete(gcf)');
                 uiwait(dlg);
             end
-            function setAlpha_(s,e)
+            function setDiscAlpha_(s,e)
                 params.alpha = str2num(s.String);
             end
-            function setIC_(s,e)
+            function setDiscInformationCriterion_(s,e)
                 params.informationCriterion = string(s.String{s.Value});
             end
             function ok_(varargin)
-                obj.spotProjectionIdealizationParams.DISC = params;
+                if obj.spotProjectionIdealizationMethod == "DISC"
+                    obj.spotProjectionIdealizationParams = params;
+                end
                 % propogate method/params to other channels?
                 otherChannels = obj.getOtherChannels();
                 if ~isempty(otherChannels)
-                    if questdlg('Propagate idealization method/params to all other channels?', 'Idealization') == "Yes"
+                    if ~exist('propagateToAllOtherChannels', 'var')
+                        propagateToAllOtherChannels = ...
+                            questdlg('Propagate idealization method/params to all other channels?', 'Idealization') == "Yes";
+                    end
+                    if propagateToAllOtherChannels
                         for channel = otherChannels
                             channel.spotProjectionIdealizationMethod = obj.spotProjectionIdealizationMethod;
                             channel.spotProjectionIdealizationParams = obj.spotProjectionIdealizationParams;
                         end
                     end
                 end
+                % close dialog
                 delete(dlg);
             end
         end
@@ -415,17 +410,61 @@ classdef Channel < handle
             obj.spotProjectionAutoIdealize = tf;
             notify(obj, 'SpotProjectionChanged');
         end
-        function toggleSpotProjectionAutoIdealize(obj)
+        function toggleSpotProjectionAutoIdealize(obj, propagateToAllOtherChannels)
             obj.spotProjectionAutoIdealize = ~obj.spotProjectionAutoIdealize;
             % propogate to other channels?
             otherChannels = obj.getOtherChannels();
             if ~isempty(otherChannels)
-                if questdlg('Propagate auto idealize status to all other channels?', 'Auto Idealize') == "Yes"
+                if ~exist('propagateToAllOtherChannels', 'var')
+                    propagateToAllOtherChannels = ...
+                        questdlg('Propagate auto idealize status to all other channels?', 'Auto Idealize') == "Yes";
+                end
+                if propagateToAllOtherChannels
                     for channel = otherChannels
                         channel.spotProjectionAutoIdealize = obj.spotProjectionAutoIdealize;
                     end
                 end
             end
+        end
+        
+        function frame = get.selectedImageFrame(obj)
+            frame = [];
+            if ~isempty(obj.selectedImage)
+                frame = obj.selectedImage.getFrame();
+            end
+        end
+        
+        function spot = get.querySpot(obj)
+            if isempty(obj.spots)
+                spot = Spot.empty;
+            elseif ~isempty(obj.selectedSpot) && any(obj.spots == obj.selectedSpot)
+                spot = obj.selectedSpot;
+            else
+                spot = obj.spots(1);
+            end
+        end
+        
+        function n = get.spotProjectionSumEveryNFrames(obj)
+            spot = obj.querySpot;
+            if ~isempty(spot)
+                n = spot.projection.sumEveryNFrames;
+            else
+                n = [];
+            end
+        end
+        function set.spotProjectionSumEveryNFrames(obj, n)
+            for spot = obj.spots
+                spot.projection.sumEveryNFrames = n;
+            end
+            notify(obj, 'SpotProjectionChanged');
+        end
+        function editSumEveryNFrames(obj)
+            answer = inputdlg({'Sum blocks of N frames:'}, ...
+                'Sum Frames', 1, {num2str(obj.spotProjectionSumEveryNFrames)});
+            if isempty(answer)
+                return
+            end
+            obj.spotProjectionSumEveryNFrames = str2num(answer{1});
         end
         
         function channels = getOtherChannels(obj)
@@ -435,90 +474,39 @@ classdef Channel < handle
             end
         end
         
-        function updateSpotProjection(obj, spot)
-            spot.updateProjection(obj.selectedProjectionImageStack);
-            % sum frame blocks?
-            if obj.spotProjectionSumEveryNFrames > 1
-                n = obj.spotProjectionSumEveryNFrames;
-                npts = floor(double(length(spot.projection.data)) / n) * n;
-                if ~isempty(spot.projection.sampleInterval)
-                    spot.projection.sampleInterval = spot.projection.sampleInterval * n;
-                end
-                y = spot.projection.data(1:n:npts);
-                for k = 2:n
-                    y = y + spot.projection.data(k:n:npts);
-                end
-                spot.projection.data = y;
+        function updateSpotProjections(obj, spots)
+            if isempty(obj.selectedProjectionImageStack) || isempty(obj.selectedProjectionImageStack.data)
+                return
+            end
+            if ~exist('spots', 'var')
+                spots = obj.spots;
+            end
+            for spot = spots
+                spot.updateProjectionFromImageStack(obj.selectedProjectionImageStack);
             end
         end
         
-        function updateSpotProjectionIdealization(obj, spot)
-            if obj.spotProjectionIdealizationMethod == "DISC"
-                params = obj.spotProjectionIdealizationParams.DISC;
-                try
-                    disc_input = initDISC();
-                    disc_input.input_type = 'alpha_value';
-                    disc_input.input_value = params.alpha;
-                    disc_input.divisive = params.informationCriterion;
-                    disc_input.agglomerative = params.informationCriterion;
-                    disc_fit = runDISC(spot.projection.data, disc_input);
-                    spot.projection.ideal = disc_fit.ideal;
-                catch
-                    msgbox( ...
-                        {'Failed to find DISC functions.', ...
-                        'Download DISC from https://github.com/ChandaLab/DISC and add the DISC folder tree to your path.'}, ...
-                        'DISC Idealization');
-                end
+        function idealizeSpotProjections(obj, spots)
+            if ~exist('spots', 'var')
+                spots = obj.spots;
+            end
+            for spot = spots
+                spot.projection.idealize(obj.spotProjectionIdealizationMethod, obj.spotProjectionIdealizationParams);
             end
         end
         
         function simulateSpotProjections(obj)
-            % dialog
-            answer = inputdlg( ...
-                {'# spots', '# sample points', 'sample interval (sec)', ...
-                'starting probabilities', 'transition rates (/sec)', ...
-                'emission means', 'emission sigmas', ...
-                '# sites/spot'}, ...
-                'Simulation', 1, ...
-                {'100', '1000', '0.1', ...
-                '0.5, 0.5', '0, 1; 1, 0', ...
-                '0, 1', '0.25, 0.33', ...
-                '1'});
-            if isempty(answer)
-                return
-            end
-            nspots = str2num(answer{1});
-            npts = str2num(answer{2});
-            dt = str2num(answer{3});
-            model.p0 = Channel.str2mat(answer{4});
-            Q = Channel.str2mat(answer{5});
-            Q = Q - diag(diag(Q));
-            Q = Q - diag(sum(Q, 2));
-            nstates = size(Q, 1);
-            model.A = ones(nstates, nstates) - exp(-Q .* dt); 
-            if isempty(model.p0)
-                % equilibrium
-                S = [Q ones(nstates, 1)];
-                model.p0 = ones(1, nstates) / (S * (S'));        
-            end
-            mu = Channel.str2mat(answer{6});
-            sigma = Channel.str2mat(answer{7});
-            for k = 1:nstates
-                model.pd(k) = makedist('Normal', 'mu', mu(k), 'sigma', sigma(k));
-            end
-            nsites = str2num(answer{8});
-            % model sanity
-            model.p0 = model.p0 ./ sum(model.p0);
-            model.A = model.A - diag(diag(model.A));
-            model.A = model.A + diag(1 - sum(model.A, 2));
-            % simulate
             disp('Simulating spot projections...');
-            [x, y, ideal] = Channel.simulateProjections(nspots, npts, dt, model, nsites);
-            obj.setSpotProjections(x, y);
-            for k = 1:nspots
-                obj.spots(k).projection.known = ideal(:,k);
+            try
+                [x, y, ideal] = Simulation.simulateTimeSeries();
+                obj.setSpotProjections(x, y);
+                for k = 1:numel(obj.spots)
+                    obj.spots(k).projection.known = ideal(:,k);
+                end
+                disp('... Done.');
+            catch
+                disp('... Aborted.');
             end
-            disp('... Done.');
         end
         
         function tf = areSpotsMappedToOtherChannelSpots(obj, channel, dmax)
@@ -991,7 +979,7 @@ classdef Channel < handle
         end
     end
     
-    methods(Static)
+    methods (Static)
         function obj = loadobj(s)
             obj = Utilities.loadobj(Channel(), s);
         end
@@ -1008,59 +996,6 @@ classdef Channel < handle
                 T = T1;
             elseif ~isempty(T2)
                 T = invert(T2);
-            end
-        end
-        
-        function [x, y, ideal] = simulateProjections(nspots, npts, dt, model, nsites)
-            x = reshape([0:npts-1] .* dt, [], 1);
-            y = zeros(npts, nspots, nsites);
-            % states
-            states = zeros(npts, nspots, nsites, 'uint8');
-            cump0 = cumsum(model.p0);
-            cumA = cumsum(model.A, 2);
-            rn = rand(npts, nspots, nsites);
-            for i = 1:nspots
-                for j = 1:nsites
-                    t = 1;
-                    states(t,i,j) = find(rn(t,i,j) <= cump0, 1);
-                    for t = 2:npts
-                        states(t,i,j) = find(rn(t,i,j) <= cumA(states(t-1,i,j),:), 1);
-                    end
-                end
-            end
-            % noisy & ideal
-            ideal = zeros(npts, nspots, nsites);
-            for k = 1:numel(model.pd)
-                idx = states == k;
-                y(idx) = random(model.pd(k), nnz(idx), 1);
-                ideal(idx) = mean(model.pd(k));
-            end
-            % add sites together
-            if nsites > 1
-                y = sum(y, 3);
-                ideal = sum(ideal, 3);
-            end
-        end
-        
-        function mat = str2mat(str)
-            str = strtrim(str);
-            if startsWith(str, '[')
-                str = strip(str, 'left', '[');
-            end
-            if endsWith(str, ']')
-                str = strip(str, 'right', ']');
-            end
-            rows = split(str, ';');
-            nrows = numel(rows);
-            for i = 1:nrows
-                cols = split(rows{i}, ',');
-                if i == 1
-                    ncols = numel(cols);
-                    mat = zeros(nrows, ncols);
-                end
-                for j = 1:ncols
-                    mat(i, j) = str2num(cols{j});
-                end
             end
         end
     end

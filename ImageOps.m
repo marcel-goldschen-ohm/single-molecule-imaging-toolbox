@@ -4,7 +4,7 @@ classdef ImageOps < handle
     %	Created by Marcel Goldschen-Ohm
     %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
     
-    methods(Static)
+    methods (Static)
         function [filteredim, sigma] = gaussFilterPreview(im, sigma, previewImage)
             % GAUSSFILTERPREVIEW Apply gaussian filter with live preview
             %   Popup dialog to adjust sigma with live preview in

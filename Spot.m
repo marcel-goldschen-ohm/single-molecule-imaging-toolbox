@@ -26,7 +26,8 @@ classdef (ConstructOnLoad) Spot < handle
             0 1 1 1 0  ...
             ]);
         
-        % spot image intensity projection across time frames
+        % Spot image intensity projection across time frames.
+        % Set in constructor.
         projection = SpotProjection.empty;
     end
     
@@ -50,10 +51,12 @@ classdef (ConstructOnLoad) Spot < handle
         function set.tags(obj, tags)
             if isempty(tags)
                 obj.tags = string.empty;
-            elseif isstring(tags) || ischar(tags)
+            elseif ischar(tags) || (isstring(tags) && numel(tags) == 1)
                 obj.tags = Spot.str2arr(tags, ',');
-            else
+            elseif isstring(tags)
                 obj.tags = tags;
+            else
+                return
             end
             notify(obj, 'TagsChanged');
         end
@@ -71,7 +74,7 @@ classdef (ConstructOnLoad) Spot < handle
             notify(obj, 'ProjectionChanged');
         end
         
-        function updateProjection(obj, imstack)
+        function updateProjectionFromImageStack(obj, imstack)
             if isempty(obj.xy) || isempty(imstack.data)
                 return
             end
@@ -96,20 +99,21 @@ classdef (ConstructOnLoad) Spot < handle
             end
             masktot = sum(mask(:));
             if isempty(mask) || masktot == 0
-                obj.projection.time = [];
-                obj.projection.data = [];
+                obj.projection.rawTime = [];
+                obj.projection.rawData = [];
                 return
             end
             nframes = imstack.numFrames;
-            obj.projection.sampleInterval = imstack.frameIntervalSec;
             if isempty(imstack.frameIntervalSec)
-                obj.projection.time = []; %reshape(1:nframes, [], 1);
+                % frames
+                obj.projection.rawTime = [];
                 obj.projection.timeUnits = 'frames';
             else
-                obj.projection.time = []; %reshape(0:nframes-1, [], 1) .* imstack.frameIntervalSec;
+                % sample interval
+                obj.projection.rawTime = imstack.frameIntervalSec;
                 obj.projection.timeUnits = 'seconds';
             end
-            obj.projection.data = reshape( ...
+            obj.projection.rawData = reshape( ...
                 sum(sum( ...
                     double(imstack.data(rows,cols,:)) .* repmat(mask, [1 1 nframes]) ...
                     , 1), 2) ./ masktot ...
