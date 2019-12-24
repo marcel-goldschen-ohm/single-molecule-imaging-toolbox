@@ -153,7 +153,7 @@ classdef ChannelImageViewer < ImageStackViewer
         
         function set.channel(obj, channel)
             % MUST always have a valid channel handle.
-            if isempty(channel)
+            if isempty(channel) || ~isvalid(channel)
                 channel = Channel;
             end
             
@@ -199,7 +199,10 @@ classdef ChannelImageViewer < ImageStackViewer
         
         function updateSpotMarkers(obj)
             %UPDATESPOTMARKERS Update graphics to show spot locations.
-            xy = vertcat(obj.channel.spots.xy);
+            xy = [];
+            if ~isempty(obj.channel.spots)
+                xy = vertcat(obj.channel.spots.xy);
+            end
             if isempty(xy)
                 obj.spotMarkers.XData = nan;
                 obj.spotMarkers.YData = nan;
@@ -292,10 +295,6 @@ classdef ChannelImageViewer < ImageStackViewer
                 'Separator', nimages <= 1, ...
                 'Callback', @(varargin) obj.channel.loadNewImage());
             
-            if isempty(obj.channel.images)
-                return
-            end
-            
             if nimages > 0
                 submenu = uimenu(menu, 'Label', 'Remove Image');
                 for image = obj.channel.images
@@ -305,12 +304,33 @@ classdef ChannelImageViewer < ImageStackViewer
                 end
             end
             
+%             if nimages > 0
+%                 submenu = uimenu(menu, 'Label', 'Image Options', ...
+%                     'Separator', 'on');
+%                 for image = obj.channel.images
+%                     immenu = uimenu(submenu, 'Label', image.getLabelWithInfo());
+%                     if ~isempty(image.fileInfo)
+%                         uimenu(immenu, 'Label', 'Reload From File', ...
+%                             'Callback', @(varargin) image.reload());
+%                     end
+%                     uimenu(immenu, 'Label', 'Rename', ...
+%                         'Callback', @(varargin) image.editLabel());
+%                     if image.numFrames > 1
+%                         uimenu(immenu, 'Label', 'Set Frame Interval', ...
+%                             'Callback', @(varargin) image.editFrameInterval());
+%                     end
+%                 end
+%             end
+            
             if ~isempty(obj.channel.selectedImage)
-                uimenu(menu, 'Label', 'Reload Image From File', ...
-                    'Separator', 'on', ...
-                    'Callback', @(varargin) obj.channel.selectedImage.reload());
+                if ~isempty(obj.channel.selectedImage.fileInfo)
+                    uimenu(menu, 'Label', 'Reload Image From File', ...
+                        'Separator', 'on', ...
+                        'Callback', @(varargin) obj.channel.selectedImage.reload());
+                end
 
                 uimenu(menu, 'Label', 'Rename Image', ...
+                    'Separator', isempty(obj.channel.selectedImage.fileInfo), ...
                     'Callback', @(varargin) obj.channel.selectedImage.editLabel());
                 
                 if obj.channel.selectedImage.numFrames > 1
@@ -318,6 +338,13 @@ classdef ChannelImageViewer < ImageStackViewer
                         'Callback', @(varargin) obj.channel.selectedImage.editFrameInterval());
                 end
             end
+            
+            submenu = uimenu(menu, 'Label', 'Display Options', ...
+                'Separator', 'on');
+            uimenu(submenu, 'Label', 'Spot Markers', ...
+                'Callback', @(varargin) obj.editSpotMarkerProperties());
+            uimenu(submenu, 'Label', 'Selected Spot Marker', ...
+                'Callback', @(varargin) obj.editSelectedSpotMarkerProperties());
             
             otherChannels = obj.channel.getOtherChannels();
             if ~isempty(otherChannels)
@@ -366,11 +393,11 @@ classdef ChannelImageViewer < ImageStackViewer
                 end
             end
             
-            uimenu(menu, 'Label', 'Autoscale', ...
-                'Separator', 'on', ...
-                'Callback', @(varargin) obj.zoomOutFullImage());
-            
             if ~isempty(obj.channel.selectedImage)
+                uimenu(menu, 'Label', 'Autoscale', ...
+                    'Separator', 'on', ...
+                    'Callback', @(varargin) obj.zoomOutFullImage());
+                
                 uimenu(menu, 'Label', 'Duplicate', ...
                     'Callback', @(varargin) obj.channel.duplicateSelectedImage());
 
@@ -389,15 +416,20 @@ classdef ChannelImageViewer < ImageStackViewer
                     'Callback', @(varargin) obj.channel.thresholdSelectedImage([], obj.imageFrame));
             end
             
-            uimenu(menu, 'Label', 'Find Spots', ...
-                'Separator', 'on', ...
-                'Callback', @(varargin) obj.channel.findSpotsInSelectedImage(obj.imageFrame));
+            if ~isempty(obj.channel.selectedImage)
+                uimenu(menu, 'Label', 'Find Spots', ...
+                    'Separator', 'on', ...
+                    'Callback', @(varargin) obj.channel.findSpotsInSelectedImage(obj.imageFrame));
+            end
             
-            uimenu(menu, 'Label', 'Copy Aligned Spots to all Channels', ...
-                'Callback', @(varargin) obj.channel.copyAlignedSpotsToAllOtherChannels());
-            
-            uimenu(menu, 'Label', 'Clear Spots', ...
-                'Callback', @(varargin) obj.channel.clearSpots());
+            if ~isempty(obj.channel.spots)
+                uimenu(menu, 'Label', 'Copy Aligned Spots to all Channels', ...
+                    'Separator', isempty(obj.channel.selectedImage), ...
+                    'Callback', @(varargin) obj.channel.copyAlignedSpotsToAllOtherChannels());
+
+                uimenu(menu, 'Label', 'Clear Spots', ...
+                    'Callback', @(varargin) obj.channel.clearSpots());
+            end
         end
         
         function infoTextPressed(obj)
@@ -459,27 +491,81 @@ classdef ChannelImageViewer < ImageStackViewer
         function idx = spotIndexAt(obj, x, y)
             %SPOTINDEXAT Return index of spot at (x,y).
             idx = [];
-            if ~isempty(obj.channel.spots)
-                xy = vertcat(obj.channel.spots.xy);
-                nspots = numel(obj.channel.spots);
-                d = sqrt(sum((xy - repmat([x y], [nspots 1])).^2, 2));
-                [d, idx] = min(d);
-                ax = obj.imageAxes;
-                tmpUnits = ax.Units;
-                ax.Units = 'pixels';
-                pos = ax.Position;
-                ax.Units = tmpUnits;
-                dxdy = obj.channel.spots(idx).xy - [x y];
-                dxdypix = dxdy ./ [diff(ax.XLim) diff(ax.YLim)] .* pos(3:4);
-                dpix = sqrt(sum(dxdypix.^2));
-                if dpix > 5
-                    idx = [];
-                end
+            if isempty(obj.channel.spots)
+                return
+            end
+            xy = vertcat(obj.channel.spots.xy);
+            if isempty(xy)
+                return
+            end
+            nspots = numel(obj.channel.spots);
+            d = sqrt(sum((xy - repmat([x y], [nspots 1])).^2, 2));
+            [d, idx] = min(d);
+            ax = obj.imageAxes;
+            tmpUnits = ax.Units;
+            ax.Units = 'pixels';
+            pos = ax.Position;
+            ax.Units = tmpUnits;
+            dxdy = obj.channel.spots(idx).xy - [x y];
+            dxdypix = dxdy ./ [diff(ax.XLim) diff(ax.YLim)] .* pos(3:4);
+            dpix = sqrt(sum(dxdypix.^2));
+            if dpix > 5
+                idx = [];
             end
         end
         
         function editBrightnessContrast(obj)
             warndlg('Brightness/Contrast not yet implemented.', 'Coming Soon');
+        end
+        
+        function editSpotMarkerProperties(obj)
+            answer = inputdlg( ...
+                {'Marker', 'Color (r g b)', 'Size', 'Linewidth'}, ...
+                '', 1, ...
+                {obj.spotMarkers.Marker, ...
+                num2str(obj.spotMarkers.CData), ...
+                num2str(obj.spotMarkers.SizeData), ...
+                num2str(obj.spotMarkers.LineWidth)});
+            if isempty(answer)
+                return
+            end
+            if ~isempty(answer{1})
+                [obj.spotMarkers.Marker] = answer{1};
+            end
+            if ~isempty(answer{2})
+                [obj.spotMarkers.CData] = str2num(answer{2});
+            end
+            if ~isempty(answer{3})
+                [obj.spotMarkers.SizeData] = str2num(answer{3});
+            end
+            if ~isempty(answer{4})
+                [obj.spotMarkers.LineWidth] = str2num(answer{4});
+            end
+        end
+        
+        function editSelectedSpotMarkerProperties(obj)
+            answer = inputdlg( ...
+                {'Marker', 'Color (r g b)', 'Size', 'Linewidth'}, ...
+                '', 1, ...
+                {obj.selectedSpotMarker.Marker, ...
+                num2str(obj.selectedSpotMarker.CData), ...
+                num2str(obj.selectedSpotMarker.SizeData), ...
+                num2str(obj.selectedSpotMarker.LineWidth)});
+            if isempty(answer)
+                return
+            end
+            if ~isempty(answer{1})
+                [obj.selectedSpotMarker.Marker] = answer{1};
+            end
+            if ~isempty(answer{2})
+                [obj.selectedSpotMarker.CData] = str2num(answer{2});
+            end
+            if ~isempty(answer{3})
+                [obj.selectedSpotMarker.SizeData] = str2num(answer{3});
+            end
+            if ~isempty(answer{4})
+                [obj.selectedSpotMarker.LineWidth] = str2num(answer{4});
+            end
         end
     end
 end

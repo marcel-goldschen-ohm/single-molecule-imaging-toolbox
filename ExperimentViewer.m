@@ -34,9 +34,18 @@ classdef ExperimentViewer < handle
         showSpotMarkersCBox = gobjects(0);
         zoomOnSelectedSpotCBox = gobjects(0);
         
-        simulateBtn = gobjects(0);
-        idealizeBtn = gobjects(0);
-        idealizeAllBtn = gobjects(0);
+        projectionHeaderText = gobjects(0);
+        clearProjectionsBtn = gobjects(0);
+        projectSpotBtn = gobjects(0);
+        projectAllSpotsBtn = gobjects(0);
+        
+        idealizationHeaderText = gobjects(0);
+        clearIdealizationsBtn = gobjects(0);
+        idealizeSpotBtn = gobjects(0);
+        idealizeAllSpotsBtn = gobjects(0);
+        
+%         simulationHeaderText = gobjects(0);
+%         simulateBtn = gobjects(0);
     end
     
     properties (Access = private)
@@ -113,25 +122,55 @@ classdef ExperimentViewer < handle
             obj.tagsMaskText = uicontrol(parent, 'Style', 'text', ...
                 'String', 'tag mask', 'HorizontalAlignment', 'right');
             obj.tagsMaskEdit = uicontrol(parent, 'Style', 'edit', ...
-                'Tooltip', 'navigate only spots with any of these tags');
+                'Tooltip', 'navigate only spots with any of these tags', ...
+                'Callback', @(varargin) obj.onTagsMaskEdited());
             obj.showSpotMarkersCBox = uicontrol(parent, 'Style', 'checkbox', ...
-                'String', 'show image markers', 'Value', 1, ...
-                'Tooltip', 'show all spots on images', ...
+                'String', 'show spot markers', 'Value', 1, ...
+                'Tooltip', 'show all spots on image', ...
                 'Callback', @(varargin) obj.updateShowSpotMarkers());
             obj.zoomOnSelectedSpotCBox = uicontrol(parent, 'Style', 'checkbox', ...
-                'String', 'zoom on selected', 'Value', 0, ...
-                'Tooltip', 'zoom images on selected spots', ...
+                'String', 'zoom on selected spot', 'Value', 0, ...
+                'Tooltip', 'zoom images on selected spot', ...
                 'Callback', @(varargin) obj.updateZoomOnSelectedSpot());
             
-            obj.simulateBtn = uicontrol(parent, 'Style', 'pushbutton', ...
-                'String', 'simulate projections', ...
-                'Callback', @(varargin) obj.simulate());
-            obj.idealizeBtn = uicontrol(parent, 'Style', 'pushbutton', ...
-                'String', 'idealize visible spots', ...
-                'Callback', @(varargin) obj.idealize());
-            obj.idealizeAllBtn = uicontrol(parent, 'Style', 'pushbutton', ...
-                'String', 'idealize all spots', ...
-                'Callback', @(varargin) obj.idealizeAll());
+            obj.projectionHeaderText = uicontrol(parent, 'Style', 'text', ...
+                'String', 'Projections', 'HorizontalAlignment', 'left', ...
+                'ForegroundColor', [1 1 1], 'BackgroundColor', [0 0 0]);
+            obj.clearProjectionsBtn = uicontrol(parent, 'Style', 'pushbutton', ...
+                'String', 'clear', ...
+                'Tooltip', 'clear all spot projections in selected channels', ...
+                'Callback', @(varargin) obj.clearProjections());
+            obj.projectSpotBtn = uicontrol(parent, 'Style', 'pushbutton', ...
+                'String', 'visible', ...
+                'Tooltip', 'update selected spot projection in selected channels', ...
+                'Callback', @(varargin) obj.projectSelectedSpot());
+            obj.projectAllSpotsBtn = uicontrol(parent, 'Style', 'pushbutton', ...
+                'String', 'all', ...
+                'Tooltip', 'update all spot projections in selected channels', ...
+                'Callback', @(varargin) obj.projectAllSpots());
+            
+            obj.idealizationHeaderText = uicontrol(parent, 'Style', 'text', ...
+                'String', 'Idealization', 'HorizontalAlignment', 'left', ...
+                'ForegroundColor', [1 1 1], 'BackgroundColor', [0 0 0]);
+            obj.clearIdealizationsBtn = uicontrol(parent, 'Style', 'pushbutton', ...
+                'String', 'clear', ...
+                'Tooltip', 'clear all spot projection idealizations in selected channels', ...
+                'Callback', @(varargin) obj.clearIdealizations());
+            obj.idealizeSpotBtn = uicontrol(parent, 'Style', 'pushbutton', ...
+                'String', 'visible', ...
+                'Tooltip', 'idealize selected spot projection in selected channels', ...
+                'Callback', @(varargin) obj.idealizeSelectedSpot());
+            obj.idealizeAllSpotsBtn = uicontrol(parent, 'Style', 'pushbutton', ...
+                'String', 'all', ...
+                'Tooltip', 'idealize all spot projections in selected channels', ...
+                'Callback', @(varargin) obj.idealizeAllSpots());
+%             
+%             obj.simulationHeaderText = uicontrol(parent, 'Style', 'text', ...
+%                 'String', 'Simulation', 'HorizontalAlignment', 'left', ...
+%                 'ForegroundColor', [1 1 1], 'BackgroundColor', [0 0 0]);
+%             obj.simulateBtn = uicontrol(parent, 'Style', 'pushbutton', ...
+%                 'String', 'simulate projections', ...
+%                 'Callback', @(varargin) obj.simulate());
             
 %             obj.Parent = parent; % calls resize() and updateResizeListener()
             obj.resize();
@@ -165,9 +204,16 @@ classdef ExperimentViewer < handle
                 obj.tagsMaskEdit ...
                 obj.showSpotMarkersCBox ...
                 obj.zoomOnSelectedSpotCBox ...
-                obj.idealizeBtn ...
-                obj.idealizeAllBtn ...
-                obj.simulateBtn ...
+                obj.projectionHeaderText ...
+                obj.clearProjectionsBtn ...
+                obj.projectSpotBtn ...
+                obj.projectAllSpotsBtn ...
+                obj.idealizationHeaderText ...
+                obj.clearIdealizationsBtn ...
+                obj.idealizeSpotBtn ...
+                obj.idealizeAllSpotsBtn ...
+                ... %obj.simulationHeaderText ...
+                ... %obj.simulateBtn ...
                 ];
             delete(h(isgraphics(h)));
         end
@@ -209,9 +255,6 @@ classdef ExperimentViewer < handle
             end
             
             % update channels list box and refresh channels display
-            if isempty(obj.channelsListBox.Value) && nchannels > 0
-                obj.channelsListBox.Value = 1:nchannels;
-            end
             obj.updateChannelsListBox();
             obj.showChannels();
             
@@ -308,12 +351,25 @@ classdef ExperimentViewer < handle
                 obj.showSpotMarkersCBox.Visible = 'off';
                 obj.zoomOnSelectedSpotCBox.Visible = 'off';
             end
-            y = y - lh;
-            obj.simulateBtn.Position = [x0 y wc lh];
-            y = y - lh;
-            obj.idealizeBtn.Position = [x0 y wc lh];
-            y = y - lh;
-            obj.idealizeAllBtn.Position = [x0 y wc lh];
+            % projections
+            y = y - margin - lh;
+            obj.projectionHeaderText.Position = [x0 y wc lh];
+            y = y - 20;
+            obj.clearProjectionsBtn.Position = [x0 y wc/3 20];
+            obj.projectSpotBtn.Position = [x0+wc/3 y wc/3 20];
+            obj.projectAllSpotsBtn.Position = [x0+wc*2/3 y wc/3 20];
+            % idealization
+            y = y - margin - lh;
+            obj.idealizationHeaderText.Position = [x0 y wc lh];
+            y = y - 20;
+            obj.clearIdealizationsBtn.Position = [x0 y wc/3 20];
+            obj.idealizeSpotBtn.Position = [x0+wc/3 y wc/3 20];
+            obj.idealizeAllSpotsBtn.Position = [x0+wc*2/3 y wc/3 20];
+%             % simulation
+%             y = y - margin - lh;
+%             obj.simulationHeaderText.Position = [x0 y wc lh];
+%             y = y - lh;
+%             obj.simulateBtn.Position = [x0 y wc lh];
             
             % visible channels
             nchannels = numel(obj.experiment.channels);
@@ -383,26 +439,12 @@ classdef ExperimentViewer < handle
         
         function addChannel(obj)
             obj.experiment.channels = [obj.experiment.channels Channel];
-            obj.channelsListBox.String = cellstr(horzcat(obj.experiment.channels.label));
-            obj.channelsListBox.Value = [obj.channelsListBox.Value numel(obj.experiment.channels)];
+            obj.updateChannelsListBox();
+            nchannels = numel(obj.experiment.channels);
+            if nchannels > 1
+                obj.channelsListBox.Value = [obj.channelsListBox.Value numel(obj.experiment.channels)];
+            end
             obj.experiment = obj.experiment; % updates everything
-            
-%             viewer = ChannelImageViewer(obj.Parent);
-%             viewer.channel = obj.experiment.channels(end);
-%             viewer.removeResizeListener();
-%             obj.channelImageViewers = [obj.channelImageViewers viewer];
-%             linkaxes(horzcat(obj.channelImageViewers.imageAxes), 'xy');
-%             
-%             viewer = ChannelSpotProjectionViewer(obj.Parent);
-%             viewer.channel = obj.experiment.channels(end);
-%             viewer.removeResizeListener();
-%             obj.channelSpotProjectionViewers = [obj.channelSpotProjectionViewers viewer];
-%             linkaxes(horzcat(obj.channelSpotProjectionViewers.projAxes), 'x');
-%             
-%             obj.channelsListBox.Value = [obj.channelsListBox.Value numel(obj.experiment.channels)];
-%             obj.updateChannelsListBox();
-%             
-%             obj.showChannels();
         end
         
         function removeChannels(obj, idx)
@@ -449,10 +491,16 @@ classdef ExperimentViewer < handle
             end
             obj.channelsListBox.Min = 0;
             obj.channelsListBox.Max = nchannels;
-            idx = obj.channelsListBox.Value;
-            idx(idx < 1) = [];
-            idx(idx > nchannels) = [];
-            obj.channelsListBox.Value = unique(idx);
+            if nchannels == 0
+                obj.channelsListBox.Value = [];
+            elseif nchannels == 1
+                obj.channelsListBox.Value = 1;
+            elseif nchannels > 1
+                idx = obj.channelsListBox.Value;
+                idx(idx < 1) = [];
+                idx(idx > nchannels) = [];
+                obj.channelsListBox.Value = unique(idx);
+            end
         end
         
         function idx = getVisibleChannelIndices(obj)
@@ -587,13 +635,11 @@ classdef ExperimentViewer < handle
         end
         
         function prevSpot(obj)
-            tagsMask = Spot.str2arr(obj.tagsMaskEdit.String, ',');
-            obj.experiment.prevSpot(tagsMask);
+            obj.experiment.prevSpot();
         end
         
         function nextSpot(obj)
-            tagsMask = Spot.str2arr(obj.tagsMaskEdit.String, ',');
-            obj.experiment.nextSpot(tagsMask);
+            obj.experiment.nextSpot();
         end
         
         function onSelectedSpotIndexChanged(obj)
@@ -628,10 +674,14 @@ classdef ExperimentViewer < handle
             end
         end
         
+        function onTagsMaskEdited(obj)
+            obj.experiment.spotTagsMask = obj.tagsMaskEdit.String;
+        end
+        
         function updateShowSpotMarkers(obj)
             for viewer = obj.channelImageViewers
                 for marker = viewer.spotMarkers
-                    marker.Visible = obj.showSpotMarkersCBox.Checked == "on";
+                    marker.Visible = obj.showSpotMarkersCBox.Value == 1;
                 end
             end
         end
@@ -639,19 +689,86 @@ classdef ExperimentViewer < handle
         function updateZoomOnSelectedSpot(obj)
         end
         
-        function simulate(obj)
-            vischannels = obj.getVisibleChannelIndices();
-            if isempty(vischannels)
+%         function simulate(obj)
+%             vischannels = obj.getVisibleChannelIndices();
+%             if isempty(vischannels)
+%                 return
+%             end
+%             channel = obj.experiment.channels(vischannels(1));
+%             channel.simulateSpotProjections();
+%         end
+
+        function clearProjections(obj)
+            if questdlg('Clear all projections in selected channels?', 'Clear Projections?') ~= "Yes"
                 return
             end
-            channel = obj.experiment.channels(vischannels(1));
-            channel.simulateSpotProjections();
+            idx = obj.getVisibleChannelIndices();
+            if isempty(idx)
+                return
+            end
+            for channel = obj.experiment.channels(idx)
+                channel.clearSpotProjections();
+            end
         end
         
-        function idealize(obj)
+        function projectSelectedSpot(obj)
+            idx = obj.getVisibleChannelIndices();
+            if isempty(idx)
+                return
+            end
+            for channel = obj.experiment.channels(idx)
+                channel.updateSpotProjections(channel.selectedSpot);
+            end
         end
         
-        function idealizeAll(obj)
+        function projectAllSpots(obj)
+            if questdlg('Idealize all spots in selected channels?', 'Idealize All Spots?') ~= "Yes"
+                return
+            end
+            idx = obj.getVisibleChannelIndices();
+            if isempty(idx)
+                return
+            end
+            for channel = obj.experiment.channels(idx)
+                spots = getTaggedSpots(channel.spots, obj.experiment.spotTagsMask);
+                channel.updateSpotProjections(spots);
+            end
+        end
+
+        function clearIdealizations(obj)
+            if questdlg('Clear all idealizations in selected channels?', 'Clear Idealizations?') ~= "Yes"
+                return
+            end
+            idx = obj.getVisibleChannelIndices();
+            if isempty(idx)
+                return
+            end
+            for channel = obj.experiment.channels(idx)
+                %channel.clearAllSpotProjectionIdealizations();
+            end
+        end
+        
+        function idealizeSelectedSpot(obj)
+            idx = obj.getVisibleChannelIndices();
+            if isempty(idx)
+                return
+            end
+            for channel = obj.experiment.channels(idx)
+                %channel.idealizeSelectedSpotProjection();
+            end
+        end
+        
+        function idealizeAllSpots(obj)
+            if questdlg('Idealize all spots in selected channels?', 'Idealize All Spots?') ~= "Yes"
+                return
+            end
+            idx = obj.getVisibleChannelIndices();
+            if isempty(idx)
+                return
+            end
+            for channel = obj.experiment.channels(idx)
+                %channel.idealizeAllSpotProjections(obj.experiment.spotTagsMask);
+            end
         end
     end
 end

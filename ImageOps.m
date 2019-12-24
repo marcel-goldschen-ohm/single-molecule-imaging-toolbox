@@ -481,6 +481,14 @@ classdef ImageOps < handle
                     previewAxes = previewImage.Parent;
                     cmap = colormap(previewAxes);
                     colormap(previewAxes, gray(2^16));
+                    childVisibility = [];
+                    for i = 1:numel(previewAxes.Children)
+                        child = previewAxes.Children(i);
+                        childVisibility(i) = string(child.Visible);
+                        if child ~= previewImage
+                            child.Visible = 'off';
+                        end
+                    end
                     hold(previewAxes, 'on');
                     previewMaxima = scatter(previewAxes, nan, nan, 'm+', ...
                         'HitTest', 'off', ...
@@ -498,6 +506,12 @@ classdef ImageOps < handle
                     previewImage.XData = [1 size(cdata, 2)];
                     previewImage.YData = [1 size(cdata, 1)];
                     colormap(previewAxes, cmap);
+                    for i = 1:numel(previewAxes.Children)
+                        child = previewAxes.Children(i);
+                        if child ~= previewImage
+                            child.Visible = childVisibility(i);
+                        end
+                    end
                 end
                 if ~ok % dialog canceled
                     return

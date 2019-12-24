@@ -3,39 +3,17 @@ classdef SpotProjection < handle
     %   Detailed explanation goes here
     
     properties
-        rawTime = []; % Tx1 time array OR 1x1 sample interval
-        rawData = []; % Tx1 data array
-        
-        timeUnits = 'frames';
-        dataUnits = 'au';
-        
-        % optional masking of raw data
-        isMasked = false; % 1x1 (uniform) OR Tx1 (nonuniform), true=masked
-        
-        % adjustments to raw data
-        offsetData = 0; % 1x1 (uniform) OR Tx1 (nonuniform) baseline offset
-        scaleData = 1; % 1x1 (uniform) OR Tx1 (nonuniform) scale factor
+        time = []; % Tx1 time array OR 1x1 sample interval (sec)
+        data = []; % Tx1 data array
         
         % sum blocks of frames
         sumEveryNFrames = 1;
         
-        % filtering
-        % ...
-        
-        % idealization
-        idealizedData = []; % idealization of data
-        
-        idealizationMethod = "";
-        idealizationParams = struct;
+        % idealization of data
+        idealizedData = [];
         
         % simulation
-        trueData = []; % e.g. for simulations
-    end
-    
-    properties (Dependent)
-        time
-        data
-        mask % true=masked
+        perfectData = []; % e.g. from simulations
     end
     
     methods
@@ -43,44 +21,23 @@ classdef SpotProjection < handle
             %SPOTPROJECTION Constructor.
         end
         
-        function set.rawTime(obj, x)
-            obj.rawTime = reshape(x, [], 1);
-        end
-        function set.rawData(obj, y)
-            obj.rawData = reshape(y, [], 1);
-        end
-        function set.idealizedData(obj, y)
-            obj.idealizedData = reshape(y, [], 1);
-        end
-        function set.trueData(obj, y)
-            obj.trueData = reshape(y, [], 1);
-        end
-        function set.isMasked(obj, y)
-            obj.isMasked = reshape(y, [], 1);
-        end
-        function set.offsetData(obj, y)
-            obj.offsetData = reshape(y, [], 1);
-        end
-        function set.scaleData(obj, y)
-            obj.scaleData = reshape(y, [], 1);
-        end
-        
         function x = get.time(obj)
-            npts = size(obj.rawData, 1);
-            if npts == 0
+            ny = size(obj.data, 1);
+            if ny == 0
                 x = [];
                 return
             end
-            if isempty(obj.rawTime)
+            nx = size(obj.time, 1);
+            if nx == 0
                 % frames
-                x = reshape([1:npts], [], 1);
-            elseif numel(obj.rawTime) == 1
+                x = reshape([1:ny], [], 1);
+            elseif nx == 1
                 % sample interval
-                dt = obj.rawTime;
-                x = dt .* reshape([0:npts-1], [], 1);
-            elseif size(obj.rawTime, 1) == npts
+                dt = obj.time;
+                x = dt .* reshape([0:ny-1], [], 1);
+            elseif nx == ny
                 % time pts
-                x = obj.rawTime;
+                x = obj.time;
             else
                 % should NOT happen
                 x = [];
@@ -91,19 +48,14 @@ classdef SpotProjection < handle
                 x = x(1:n:npts);
             end
         end
+        function set.time(obj, x)
+            obj.time = reshape(x, [], 1);
+        end
         
         function y = get.data(obj)
-            y = obj.rawData;
+            y = obj.data;
             if isempty(y)
                 return
-            end
-            % offset raw
-            if obj.offsetData && (numel(obj.offsetData) == 1 || size(obj.offsetData, 1) == size(y, 1))
-                y = y + obj.offsetData;
-            end
-            % scale raw
-            if obj.scaleData ~= 1 && (numel(obj.scaleData) == 1 || size(obj.scaleData, 1) == size(y, 1))
-                y = y .* obj.scaleData;
             end
             % sum frame blocks?
             if obj.sumEveryNFrames > 1
@@ -115,16 +67,35 @@ classdef SpotProjection < handle
                     y = y + y0(k:n:npts);
                 end
             end
-            % offset summed frames
-            if obj.offsetData && size(obj.offsetData, 1) == size(y, 1)
-                y = y + obj.offsetData;
+        end
+        function set.data(obj, y)
+            obj.data = reshape(y, [], 1);
+        end
+        
+        function y = get.idealizedData(obj)
+            if ~isequal(size(obj.idealizedData), size(obj.data))
+            	y = [];
+                return
             end
-            % scale summed frames
-            if obj.scaleData ~= 1 && size(obj.scaleData, 1) == size(y, 1)
-                y = y .* obj.scaleData;
-            end
-            % filter
-            % ...
+            y = obj.idealizedData;
+        end
+        function set.idealizedData(obj, y)
+            obj.idealizedData = reshape(y, [], 1);
+        end
+        
+        
+        
+        function set.trueData(obj, y)
+            obj.trueData = reshape(y, [], 1);
+        end
+        function set.isMasked(obj, y)
+            obj.isMasked = reshape(y, [], 1);
+        end
+        function set.offsetData(obj, y)
+            obj.offsetData = reshape(y, [], 1);
+        end
+        function set.scaleData(obj, y)
+            obj.scaleData = reshape(y, [], 1);
         end
         
         function tf = get.mask(obj)
@@ -158,6 +129,20 @@ classdef SpotProjection < handle
             end
         end
         
+        function dt = get.sampleInterval(obj)
+            if isempty(obj.rawTime)
+                dt = [];
+            elseif numel(obj.rawTime) == 1
+                dt = obj.rawTime;
+            else
+                dt = obj.rawTime(2) - obj.rawTime(1);
+            end
+        end
+        
+        function clear(obj)
+            obj.rawData = [];
+        end
+        
         function idealize(obj, method, params)
             if ~exist('method', 'var')
                 method = obj.idealizationMethod;
@@ -177,7 +162,7 @@ classdef SpotProjection < handle
                         disc_input.agglomerative = params.informationCriterion;
                     end
                     disc_fit = runDISC(obj.data, disc_input);
-                    obj.ideal = disc_fit.ideal;
+                    obj.idealizedData = disc_fit.ideal;
                 catch
                     errordlg('Requires DISC (https://github.com/ChandaLab/DISC)', 'DISC');
                     return

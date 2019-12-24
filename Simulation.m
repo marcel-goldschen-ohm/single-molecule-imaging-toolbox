@@ -52,7 +52,7 @@ classdef Simulation < handle
             states = zeros(npts, nseries, nsites, 'uint8');
             cump0 = cumsum(model.p0);
             cumA = cumsum(model.A, 2);
-            rn = rand(npts, nspots, nsites);
+            rn = rand(npts, nseries, nsites);
             for i = 1:nseries
                 for j = 1:nsites
                     t = 1;

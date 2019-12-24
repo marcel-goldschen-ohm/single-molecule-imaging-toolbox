@@ -1,4 +1,4 @@
-classdef (ConstructOnLoad) Spot < handle
+classdef Spot < handle
     %SPOT Summary of this class goes here
     %   Detailed explanation goes here
     %
@@ -27,8 +27,11 @@ classdef (ConstructOnLoad) Spot < handle
             ]);
         
         % Spot image intensity projection across time frames.
-        % Set in constructor.
-        projection = SpotProjection.empty;
+        time = []; % time array OR sample interval (sec)
+        data = []; % spot intensity z-projection
+        sumFramesBlockSize = 1; % sum blocks of frames, e.g. simulate longer exposures
+        idealizedData = []; % idealization of data
+        perfectData = []; % e.g. from simulations
     end
     
     events
@@ -69,9 +72,79 @@ classdef (ConstructOnLoad) Spot < handle
             end
         end
         
-        function set.projection(obj, proj)
-            obj.projection = proj;
-            notify(obj, 'ProjectionChanged');
+        function x = get.time(obj)
+            ny = size(obj.data, 1);
+            if ny == 0
+                x = [];
+                return
+            end
+            nx = size(obj.time, 1);
+            if nx == 0
+                % frames
+                x = reshape([1:ny], [], 1);
+            elseif nx == 1
+                % sample interval
+                dt = obj.time;
+                x = dt .* reshape([0:ny-1], [], 1);
+            else
+                % time pts
+                x = obj.time;
+            end
+            if ~isempty(x) && obj.sumFramesBlockSize > 1
+                n = obj.sumFramesBlockSize;
+                npts = floor(double(length(x)) / n) * n;
+                x = x(1:n:npts);
+            end
+        end
+        function set.time(obj, x)
+            obj.time = reshape(x, [], 1);
+        end
+        
+        function y = get.data(obj)
+            y = obj.data;
+            if isempty(y)
+                return
+            end
+            % sum frame blocks?
+            if obj.sumFramesBlockSize > 1
+                n = obj.sumFramesBlockSize;
+                npts = floor(double(length(y)) / n) * n;
+                y0 = y;
+                y = y0(1:n:npts);
+                for k = 2:n
+                    y = y + y0(k:n:npts);
+                end
+            end
+        end
+        function set.data(obj, y)
+            obj.data = reshape(y, [], 1);
+        end
+        
+        function set.idealizedData(obj, y)
+            obj.idealizedData = reshape(y, [], 1);
+        end
+        
+        function y = get.perfectData(obj)
+            y = obj.perfectData;
+            if isempty(y)
+                return
+            end
+            ny = size(y, 1);
+            ndata = size(obj.data, 1);
+            if ny ~= ndata && obj.sumFramesBlockSize > 1
+                n = obj.sumFramesBlockSize;
+                npts = floor(double(ny) / n) * n;
+                if npts == ndata
+                    y0 = y;
+                    y = y0(1:n:npts);
+                    for k = 2:n
+                        y = y + y0(k:n:npts);
+                    end
+                end
+            end
+        end
+        function set.perfectData(obj, y)
+            obj.perfectData = reshape(y, [], 1);
         end
         
         function updateProjectionFromImageStack(obj, imstack)
@@ -106,19 +179,16 @@ classdef (ConstructOnLoad) Spot < handle
             nframes = imstack.numFrames;
             if isempty(imstack.frameIntervalSec)
                 % frames
-                obj.projection.rawTime = [];
-                obj.projection.timeUnits = 'frames';
+                obj.time = [];
             else
-                % sample interval
-                obj.projection.rawTime = imstack.frameIntervalSec;
-                obj.projection.timeUnits = 'seconds';
+                % sample interval (sec)
+                obj.time = imstack.frameIntervalSec;
             end
-            obj.projection.rawData = reshape( ...
+            obj.data = reshape( ...
                 sum(sum( ...
                     double(imstack.data(rows,cols,:)) .* repmat(mask, [1 1 nframes]) ...
                     , 1), 2) ./ masktot ...
                 , [], 1);
-            obj.projection.dataUnits = 'au';
             notify(obj, 'ProjectionChanged');
         end
     end
@@ -126,6 +196,19 @@ classdef (ConstructOnLoad) Spot < handle
     methods (Static)
         function obj = loadobj(s)
             obj = Utilities.loadobj(Spot(), s);
+        end
+        
+        function spots = getTaggedSpots(spots, tagsMask)
+            if ~exist('tagsMask', 'var') || isempty(tagsMask)
+                return
+            end
+            clip = [];
+            for k = 1:numel(spots)
+                if isempty(intersect(tagsMask, spots(k).tags))
+                    clip = [clip k];
+                end
+            end
+            spots(clip) = [];
         end
         
         function [pixelsXY, pixelIndices] = getPixelsInSpot(xy, radius, imageSize)
@@ -159,6 +242,18 @@ classdef (ConstructOnLoad) Spot < handle
                     arr = [arr string(elem)];
                 end
             end
+        end
+        
+        function [segments, segmentStartIndices] = getNonNanSegments(dataWithNan)
+            % return cell array of non-nan subarrays
+            dataWithNan = reshape(dataWithNan, [], 1);
+            idx = isnan(dataWithNan);
+            segmentLengths = diff(find([1; diff(idx); 1]));
+            segmentStartIndices = [1; cumsum(segmentLengths(1:end-1))];
+            segments = mat2cell(dataWithNan, segmentLengths(:));
+            % remove nan segments
+            segments(2:2:end) = [];
+            segmentStartIndices(2:2:end) = [];
         end
     end
 end

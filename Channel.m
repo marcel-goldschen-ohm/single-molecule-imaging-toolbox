@@ -49,15 +49,15 @@ classdef Channel < handle
         % Spot projection options.
         spotProjectionHistogramNumBins = 80;
         spotProjectionHistogramSqrtCounts = false;
-        spotProjectionIdealizationMethod = "";
-        spotProjectionIdealizationParams = struct;
-        spotProjectionAutoIdealize = true; % auto idealize visible projection
+%         spotProjectionIdealizationMethod = "";
+%         spotProjectionIdealizationParams = struct;
+%         spotProjectionAutoIdealize = true; % auto idealize visible projection
     end
     
     properties (Dependent)
         selectedImageFrame
         querySpot
-        spotProjectionSumEveryNFrames
+        spotProjectionSumFramesBlockSize
     end
     
     events
@@ -120,11 +120,11 @@ classdef Channel < handle
             end
             for k = 1:nproj
                 if isequal(size(x), size(y))
-                    spots(k).projection.time = x(:,k);
+                    spots(k).time = x(:,k);
                 else
-                    spots(k).projection.time = x;
+                    spots(k).time = x;
                 end
-                spots(k).projection.data = y(:,k);
+                spots(k).data = y(:,k);
             end
             if numel(obj.spots) ~= nproj
                 obj.spots = spots;
@@ -309,123 +309,123 @@ classdef Channel < handle
             notify(obj, 'SpotProjectionChanged');
         end
         
-        function set.spotProjectionIdealizationMethod(obj, method)
-            obj.spotProjectionIdealizationMethod = string(method);
-            notify(obj, 'SpotProjectionChanged');
-        end
-        function setSpotProjectionIdealizationMethod(obj, method)
-            obj.spotProjectionIdealizationMethod = method;
-            obj.editSpotProjectionIdealizationParams(); % will ask about propagating to other channels
-        end
-        
-        function set.spotProjectionIdealizationParams(obj, params)
-            obj.spotProjectionIdealizationParams = params;
-            notify(obj, 'SpotProjectionChanged');
-        end
-        function editSpotProjectionIdealizationParams(obj, propagateToAllOtherChannels)
-            if isempty(obj.spotProjectionIdealizationMethod)
-                return
-            end
-            if obj.spotProjectionIdealizationMethod == "DISC"
-                % default params
-                params.alpha = 0.05;
-                params.informationCriterion = "BIC-GMM";
-                try
-                    alpha = obj.spotProjectionIdealizationParams.alpha;
-                    if alpha > 0 && alpha < 1
-                        params.alpha = alpha;
-                    end
-                catch
-                end
-                ICs = ["AIC-GMM", "BIC-GMM", "BIC-RSS", "HQC-GMM", "MDL"];
-                try
-                    IC = string(obj.spotProjectionIdealizationParams.informationCriterion);
-                    if any(ICs == IC)
-                        params.informationCriterion = IC;
-                    end
-                catch
-                end
-                % params dialog
-                dlg = dialog('Name', 'DISC');
-                w = 200;
-                lh = 20;
-                h = 2*lh + 30;
-                dlg.Position(3) = w;
-                dlg.Position(4) = h;
-                y = h - lh;
-                uicontrol(dlg, 'Style', 'text', 'String', char(hex2dec('03b1')), ...
-                    'HorizontalAlignment', 'right', ...
-                    'Units', 'pixels', 'Position', [0, y, w/2, lh]);
-                uicontrol(dlg, 'Style', 'edit', 'String', num2str(params.alpha), ...
-                    'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
-                    'Callback', @setDiscAlpha_);
-                y = y - lh;
-                uicontrol(dlg, 'Style', 'text', 'String', 'Information Criterion', ...
-                    'HorizontalAlignment', 'right', ...
-                    'Units', 'pixels', 'Position', [0, y, w/2, lh]);
-                uicontrol(dlg, 'Style', 'popupmenu', ...
-                    'String', ICs, ...
-                    'Value', find(ICs == params.informationCriterion, 1), ...
-                    'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
-                    'Callback', @setDiscInformationCriterion_);
-                y = 0;
-                uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
-                    'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
-                    'Callback', @ok_);
-                uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
-                    'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
-                    'Callback', 'delete(gcf)');
-                uiwait(dlg);
-            end
-            function setDiscAlpha_(s,e)
-                params.alpha = str2num(s.String);
-            end
-            function setDiscInformationCriterion_(s,e)
-                params.informationCriterion = string(s.String{s.Value});
-            end
-            function ok_(varargin)
-                if obj.spotProjectionIdealizationMethod == "DISC"
-                    obj.spotProjectionIdealizationParams = params;
-                end
-                % propogate method/params to other channels?
-                otherChannels = obj.getOtherChannels();
-                if ~isempty(otherChannels)
-                    if ~exist('propagateToAllOtherChannels', 'var')
-                        propagateToAllOtherChannels = ...
-                            questdlg('Propagate idealization method/params to all other channels?', 'Idealization') == "Yes";
-                    end
-                    if propagateToAllOtherChannels
-                        for channel = otherChannels
-                            channel.spotProjectionIdealizationMethod = obj.spotProjectionIdealizationMethod;
-                            channel.spotProjectionIdealizationParams = obj.spotProjectionIdealizationParams;
-                        end
-                    end
-                end
-                % close dialog
-                delete(dlg);
-            end
-        end
-        
-        function set.spotProjectionAutoIdealize(obj, tf)
-            obj.spotProjectionAutoIdealize = tf;
-            notify(obj, 'SpotProjectionChanged');
-        end
-        function toggleSpotProjectionAutoIdealize(obj, propagateToAllOtherChannels)
-            obj.spotProjectionAutoIdealize = ~obj.spotProjectionAutoIdealize;
-            % propogate to other channels?
-            otherChannels = obj.getOtherChannels();
-            if ~isempty(otherChannels)
-                if ~exist('propagateToAllOtherChannels', 'var')
-                    propagateToAllOtherChannels = ...
-                        questdlg('Propagate auto idealize status to all other channels?', 'Auto Idealize') == "Yes";
-                end
-                if propagateToAllOtherChannels
-                    for channel = otherChannels
-                        channel.spotProjectionAutoIdealize = obj.spotProjectionAutoIdealize;
-                    end
-                end
-            end
-        end
+%         function set.spotProjectionIdealizationMethod(obj, method)
+%             obj.spotProjectionIdealizationMethod = string(method);
+%             notify(obj, 'SpotProjectionChanged');
+%         end
+%         function setSpotProjectionIdealizationMethod(obj, method)
+%             obj.spotProjectionIdealizationMethod = method;
+%             obj.editSpotProjectionIdealizationParams(); % will ask about propagating to other channels
+%         end
+%         
+%         function set.spotProjectionIdealizationParams(obj, params)
+%             obj.spotProjectionIdealizationParams = params;
+%             notify(obj, 'SpotProjectionChanged');
+%         end
+%         function editSpotProjectionIdealizationParams(obj, propagateToAllOtherChannels)
+%             if isempty(obj.spotProjectionIdealizationMethod)
+%                 return
+%             end
+%             if obj.spotProjectionIdealizationMethod == "DISC"
+%                 % default params
+%                 params.alpha = 0.05;
+%                 params.informationCriterion = "BIC-GMM";
+%                 try
+%                     alpha = obj.spotProjectionIdealizationParams.alpha;
+%                     if alpha > 0 && alpha < 1
+%                         params.alpha = alpha;
+%                     end
+%                 catch
+%                 end
+%                 ICs = ["AIC-GMM", "BIC-GMM", "BIC-RSS", "HQC-GMM", "MDL"];
+%                 try
+%                     IC = string(obj.spotProjectionIdealizationParams.informationCriterion);
+%                     if any(ICs == IC)
+%                         params.informationCriterion = IC;
+%                     end
+%                 catch
+%                 end
+%                 % params dialog
+%                 dlg = dialog('Name', 'DISC');
+%                 w = 200;
+%                 lh = 20;
+%                 h = 2*lh + 30;
+%                 dlg.Position(3) = w;
+%                 dlg.Position(4) = h;
+%                 y = h - lh;
+%                 uicontrol(dlg, 'Style', 'text', 'String', 'alpha', ... % char(hex2dec('03b1'))
+%                     'HorizontalAlignment', 'right', ...
+%                     'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+%                 uicontrol(dlg, 'Style', 'edit', 'String', num2str(params.alpha), ...
+%                     'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+%                     'Callback', @setDiscAlpha_);
+%                 y = y - lh;
+%                 uicontrol(dlg, 'Style', 'text', 'String', 'Information Criterion', ...
+%                     'HorizontalAlignment', 'right', ...
+%                     'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+%                 uicontrol(dlg, 'Style', 'popupmenu', ...
+%                     'String', ICs, ...
+%                     'Value', find(ICs == params.informationCriterion, 1), ...
+%                     'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+%                     'Callback', @setDiscInformationCriterion_);
+%                 y = 0;
+%                 uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
+%                     'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
+%                     'Callback', @ok_);
+%                 uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
+%                     'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
+%                     'Callback', 'delete(gcf)');
+%                 uiwait(dlg);
+%             end
+%             function setDiscAlpha_(s,e)
+%                 params.alpha = str2num(s.String);
+%             end
+%             function setDiscInformationCriterion_(s,e)
+%                 params.informationCriterion = string(s.String{s.Value});
+%             end
+%             function ok_(varargin)
+%                 if obj.spotProjectionIdealizationMethod == "DISC"
+%                     obj.spotProjectionIdealizationParams = params;
+%                 end
+%                 % propogate method/params to other channels?
+%                 otherChannels = obj.getOtherChannels();
+%                 if ~isempty(otherChannels)
+%                     if ~exist('propagateToAllOtherChannels', 'var')
+%                         propagateToAllOtherChannels = ...
+%                             questdlg('Propagate idealization method/params to all other channels?', 'Idealization') == "Yes";
+%                     end
+%                     if propagateToAllOtherChannels
+%                         for channel = otherChannels
+%                             channel.spotProjectionIdealizationMethod = obj.spotProjectionIdealizationMethod;
+%                             channel.spotProjectionIdealizationParams = obj.spotProjectionIdealizationParams;
+%                         end
+%                     end
+%                 end
+%                 % close dialog
+%                 delete(dlg);
+%             end
+%         end
+%         
+%         function set.spotProjectionAutoIdealize(obj, tf)
+%             obj.spotProjectionAutoIdealize = tf;
+%             notify(obj, 'SpotProjectionChanged');
+%         end
+%         function toggleSpotProjectionAutoIdealize(obj, propagateToAllOtherChannels)
+%             obj.spotProjectionAutoIdealize = ~obj.spotProjectionAutoIdealize;
+%             % propogate to other channels?
+%             otherChannels = obj.getOtherChannels();
+%             if ~isempty(otherChannels)
+%                 if ~exist('propagateToAllOtherChannels', 'var')
+%                     propagateToAllOtherChannels = ...
+%                         questdlg('Propagate auto idealize status to all other channels?', 'Auto Idealize') == "Yes";
+%                 end
+%                 if propagateToAllOtherChannels
+%                     for channel = otherChannels
+%                         channel.spotProjectionAutoIdealize = obj.spotProjectionAutoIdealize;
+%                     end
+%                 end
+%             end
+%         end
         
         function frame = get.selectedImageFrame(obj)
             frame = [];
@@ -444,27 +444,31 @@ classdef Channel < handle
             end
         end
         
-        function n = get.spotProjectionSumEveryNFrames(obj)
+        function n = get.spotProjectionSumFramesBlockSize(obj)
             spot = obj.querySpot;
             if ~isempty(spot)
-                n = spot.projection.sumEveryNFrames;
+                n = spot.sumFramesBlockSize;
             else
-                n = [];
+                n = 1;
             end
         end
-        function set.spotProjectionSumEveryNFrames(obj, n)
-            for spot = obj.spots
-                spot.projection.sumEveryNFrames = n;
+        function set.spotProjectionSumFramesBlockSize(obj, n)
+            for k = 1:numel(obj.spots)
+                obj.spots(k).sumFramesBlockSize = n;
             end
-            notify(obj, 'SpotProjectionChanged');
+            notify(obj, 'SpotsChanged');
+            if ~isempty(obj.selectedSpot)
+                obj.selectedSpot.sumFramesBlockSize = n;
+                notify(obj, 'SelectedSpotChanged');
+            end
         end
-        function editSumEveryNFrames(obj)
+        function editSumFramesBlockSize(obj)
             answer = inputdlg({'Sum blocks of N frames:'}, ...
-                'Sum Frames', 1, {num2str(obj.spotProjectionSumEveryNFrames)});
+                'Sum Frames', 1, {num2str(obj.spotProjectionSumFramesBlockSize)});
             if isempty(answer)
                 return
             end
-            obj.spotProjectionSumEveryNFrames = str2num(answer{1});
+            obj.spotProjectionSumFramesBlockSize = str2num(answer{1});
         end
         
         function channels = getOtherChannels(obj)
@@ -474,6 +478,32 @@ classdef Channel < handle
             end
         end
         
+        function clearSpotProjections(obj, spots)
+            if ~exist('spots', 'var')
+                spots = obj.spots;
+            end
+            if isempty(spots)
+                return
+            end
+            for k = 1:numel(spots)
+                spots(k).time = [];
+                spots(k).data = [];
+            end
+            notify(obj, 'SpotsChanged');
+            if ~isempty(obj.selectedSpot) && any(spots == obj.selectedSpot)
+                notify(obj, 'SelectedSpotChanged');
+            end
+        end
+        function askToClearAllSpotProjections(obj)
+            if isempty(obj.spots)
+                return
+            end
+            if questdlg('Clear all spot projections?', 'Clear Projections?') ~= "Yes"
+                return
+            end
+            obj.clearSpotProjections(obj.spots);
+        end
+        
         function updateSpotProjections(obj, spots)
             if isempty(obj.selectedProjectionImageStack) || isempty(obj.selectedProjectionImageStack.data)
                 return
@@ -481,32 +511,124 @@ classdef Channel < handle
             if ~exist('spots', 'var')
                 spots = obj.spots;
             end
-            for spot = spots
-                spot.updateProjectionFromImageStack(obj.selectedProjectionImageStack);
+            if isempty(spots)
+                return
+            end
+            for k = 1:numel(spots)
+                spots(k).updateProjectionFromImageStack(obj.selectedProjectionImageStack);
+            end
+            notify(obj, 'SpotsChanged');
+            if ~isempty(obj.selectedSpot) && any(spots == obj.selectedSpot)
+                notify(obj, 'SelectedSpotChanged');
             end
         end
         
-        function idealizeSpotProjections(obj, spots)
-            if ~exist('spots', 'var')
-                spots = obj.spots;
-            end
-            for spot = spots
-                spot.projection.idealize(obj.spotProjectionIdealizationMethod, obj.spotProjectionIdealizationParams);
-            end
-        end
+%         function clearSpotProjectionIdealizations(obj, spots)
+%             if ~exist('spots', 'var')
+%                 spots = obj.spots;
+%             end
+%             if isempty(spots)
+%                 return
+%             end
+%             for k = 1:numel(spots)
+%                 spots(k).projection.idealizedData = [];
+%             end
+%         end
+%         
+%         function idealizeSpotProjections(obj, spots)
+%             if ~exist('spots', 'var')
+%                 spots = obj.spots;
+%             end
+%             if isempty(spots)
+%                 return
+%             end
+%             for k = 1:numel(spots)
+%                 spots(k).projection.idealize(obj.spotProjectionIdealizationMethod, obj.spotProjectionIdealizationParams);
+%             end
+%         end
+%         
+%         function clearAllSpotProjections(obj, ask)
+%             if exist('ask', 'var') && ask
+%                 if questdlg('Clear all spot projections?', 'Clear Projections?') ~= "Yes"
+%                     return
+%                 end
+%             end
+%             if ~isempty(obj.spots)
+%                 obj.clearSpotProjections(obj.spots);
+%                 notify(obj, 'SpotsChanged');
+%             end
+%             if ~isempty(obj.selectedSpot)
+%                 obj.selectedSpot.projection.clear();
+%                 notify(obj, 'SelectedSpotChanged');
+%             end
+%         end
+%         
+%         function clearAllSpotProjectionIdealizations(obj, ask)
+%             if exist('ask', 'var') && ask
+%                 if questdlg('Clear all spot projeciton idealizations?', 'Clear Idealizations?') ~= "Yes"
+%                     return
+%                 end
+%             end
+%             if ~isempty(obj.spots)
+%                 obj.clearSpotProjectionIdealizations(obj.spots);
+%                 notify(obj, 'SpotsChanged');
+%             end
+%             if ~isempty(obj.selectedSpot)
+%                 obj.selectedSpot.projection.idealizedData = [];
+%                 notify(obj, 'SelectedSpotChanged');
+%             end
+%         end
+%         
+%         function idealizeSelectedSpotProjection(obj)
+%             if ~isempty(obj.selectedSpot)
+%                 obj.idealizeSpotProjections(obj.selectedSpot);
+%                 notify(obj, 'SelectedSpotChanged');
+%             end
+%         end
+%         
+%         function idealizeAllSpotProjections(obj, tagsMask, ask)
+%             if isempty(obj.spots)
+%                 return
+%             end
+%             if exist('ask', 'var') && ask
+%                 if questdlg('Idealize all spots?', 'Idealize All Spots?') ~= "Yes"
+%                     return
+%                 end
+%             end
+%             if ~exist('tagsMask', 'var') || isempty(tagsMask)
+%                 obj.idealizeSpotProjections(obj.spots);
+%             else
+%                 spots = obj.spots;
+%                 clip = [];
+%                 for k = 1:numel(spots)
+%                     if isempty(intersect(tagsMask, spots(k).tags))
+%                         clip = [clip k];
+%                     end
+%                 end
+%                 spots(clip) = [];
+%                 obj.idealizeSpotProjections(spots);
+%             end
+%             notify(obj, 'SpotsChanged');
+%             if any(obj.spots == obj.selectedSpot)
+%                 notify(obj, 'SelectedSpotChanged');
+%             end
+%         end
         
         function simulateSpotProjections(obj)
             disp('Simulating spot projections...');
+            wb = waitbar(0, 'Simulating spot projection time series...');
             try
                 [x, y, ideal] = Simulation.simulateTimeSeries();
                 obj.setSpotProjections(x, y);
                 for k = 1:numel(obj.spots)
-                    obj.spots(k).projection.known = ideal(:,k);
+                    obj.spots(k).projection.trueData = ideal(:,k);
                 end
                 disp('... Done.');
-            catch
-                disp('... Aborted.');
+                notify(obj, 'SpotsChanged');
+            catch err
+                disp(['... Aborted: ' err.message]);
             end
+            close(wb);
         end
         
         function tf = areSpotsMappedToOtherChannelSpots(obj, channel, dmax)
@@ -707,11 +829,17 @@ classdef Channel < handle
             if isempty(im)
                 return
             end
+            if ~isempty(obj.spots)
+                if questdlg('This will overwrite current spots. Continue?', 'Overwrite Spots?') ~= "Yes"
+                    return
+                end
+            end
             if numel(unique(im)) == 2
                 % convert two-valued image to logical
                 im = im > min(im(:));
             end
             if islogical(im)
+                wb = waitbar(0, 'Finding spots...');
                 props = regionprops(im, 'all');
                 nspots = numel(props);
                 if nspots
@@ -725,6 +853,7 @@ classdef Channel < handle
                 else
                     obj.spots = Spot.empty(0,1);
                 end
+                close(wb);
             else
                 xy = ImageOps.findMaximaPreview(im, [], [], 0, 0, previewImage);
                 nspots = size(xy,1);
@@ -904,17 +1033,6 @@ classdef Channel < handle
         function copyAlignedSpotsToAllOtherChannels(obj)
             channels = obj.getOtherChannels();
             obj.copyAlignedSpotsToOtherChannels(channels);
-        end
-        
-        function menu = selectProjectionImageStackMenu(obj, parent)
-            menu = uimenu(parent, 'Label', 'Select Projection Image Stack');
-            for image = obj.images
-                if image.numFrames > 1
-                    uimenu(menu, 'Label', image.getLabelWithSizeInfo(), ...
-                        'Checked', isequal(image, obj.selectedProjectionImageStack), ...
-                        'Callback', @(varargin) obj.setSelectedProjectionImageStack(image));
-                end
-            end
         end
     end
     

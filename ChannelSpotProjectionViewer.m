@@ -16,6 +16,7 @@ classdef ChannelSpotProjectionViewer < handle
         
         histAxes = gobjects(0);
         histBar = gobjects(0);
+        histIdealLines = gobjects(0);
         
         infoText = gobjects(0);
         menuButton = gobjects(0);
@@ -77,6 +78,9 @@ classdef ChannelSpotProjectionViewer < handle
                 'BarWidth', 1, ...
                 'LineStyle', 'none', ...
                 'FaceAlpha', 0.5);
+            obj.histIdealLines = plot(ax, nan, nan, '-', ...
+                'LineWidth', 1.5, ...
+                'HitTest', 'off', 'PickableParts', 'none');
             
             linkaxes([obj.projAxes obj.histAxes], 'y');
             
@@ -193,7 +197,7 @@ classdef ChannelSpotProjectionViewer < handle
             spot = obj.channel.selectedSpot;
             if ~isempty(spot)
                 % update projection
-                obj.channel.updateSpotProjection(spot);
+                obj.channel.updateSpotProjections(spot);
                 x = spot.projection.time;
                 y = spot.projection.data;
                 if ~isempty(y)
@@ -203,9 +207,9 @@ classdef ChannelSpotProjectionViewer < handle
                     % ideal
                     if obj.showIdealizationBtn.Value
                         if obj.channel.spotProjectionAutoIdealize
-                            obj.channel.updateSpotProjectionIdealization(spot);
+                            obj.channel.idealizeSpotProjections(spot);
                         end
-                        ideal = spot.projection.ideal;
+                        ideal = spot.projection.idealizedData;
                         if isequal(size(y), size(ideal))
                             obj.idealLine.XData = x;
                             obj.idealLine.YData = ideal;
@@ -221,13 +225,44 @@ classdef ChannelSpotProjectionViewer < handle
                     nbins = obj.channel.spotProjectionHistogramNumBins;
                     limits = obj.projAxes.YLim;
                     edges = linspace(limits(1), limits(2), nbins + 1);
+                    centers = (edges(1:end-1) + edges(2:end)) / 2;
                     counts = histcounts(y, edges);
+                    area = trapz(centers, counts);
                     if obj.channel.spotProjectionHistogramSqrtCounts
                         counts = sqrt(counts);
                     end
-                    centers = (edges(1:end-1) + edges(2:end)) / 2;
                     obj.histBar.XData = centers;
                     obj.histBar.YData = counts;
+                    if any(isnan(obj.idealLine.YData)) || isempty(obj.idealLine.YData)
+                        obj.histIdealLines.XData = nan;
+                        obj.histIdealLines.YData = nan;
+                    else
+                        if numel(centers) < 100
+                            bins = reshape(linspace(edges(1), edges(end), 101), [] ,1);
+                        else
+                            bins = reshape(centers, [], 1);
+                        end
+                        ustates = unique(obj.idealLine.YData);
+                        nustates = numel(ustates);
+                        fits = zeros(numel(bins), nustates);
+                        npts = numel(obj.idealLine.YData);
+                        for k = 1:nustates
+                            idx = find(obj.idealLine.YData == ustates(k));
+                            [mu, sigma] = normfit(obj.projLine.YData(idx));
+                            weight = double(numel(idx)) / npts * area;
+                            fits(:,k) = weight .* normpdf(bins, mu, sigma);
+                        end
+                        if obj.channel.spotProjectionHistogramSqrtCounts
+                            fits = sqrt(fits);
+                        end
+                        bins = repmat(bins, 1, nustates);
+                        if isgraphics(obj.histIdealLines)
+                            delete(obj.histIdealLines);
+                        end
+                        obj.histIdealLines = plot(obj.histAxes, fits, bins, '-', ...
+                            'LineWidth', 1.5, ...
+                            'HitTest', 'off', 'PickableParts', 'none');
+                    end
                     return
                 end
             end
@@ -237,6 +272,8 @@ classdef ChannelSpotProjectionViewer < handle
             obj.idealLine.YData = nan;
             obj.histBar.XData = nan;
             obj.histBar.YData = nan;
+            obj.histIdealLines.XData = nan;
+            obj.histIdealLines.YData = nan;
         end
         
         function onSelectedProjectionImageStackChanged(obj)
@@ -362,53 +399,87 @@ classdef ChannelSpotProjectionViewer < handle
         end
         
         function menuButtonPressed(obj)
-            menu = obj.getActionsMenu();
+            menu = obj.getMenu();
             fig = ancestor(obj.Parent, 'Figure');
             menu.Parent = fig;
             menu.Position(1:2) = obj.menuButton.Position(1:2);
             menu.Visible = 1;
         end
         
-        function menu = getActionsMenu(obj)
+        function menu = getMenu(obj)
             menu = uicontextmenu;
             
             if isempty(obj.channel)
                 return
             end
             
-            submenu = obj.channel.selectProjectionImageStackMenu(menu);
+            uimenu(menu, 'Label', 'Rename Channel', ...
+                'Callback', @(varargin) obj.channel.editLabel());
+            
+            submenu = uimenu(menu, 'Label', 'Select Projection Image Stack', ...
+                'Separator', 'on');
+            for image = obj.channel.images
+                if image.numFrames > 1
+                    uimenu(submenu, 'Label', image.getLabelWithInfo(), ...
+                        'Checked', isequal(image, obj.channel.selectedProjectionImageStack), ...
+                        'Callback', @(varargin) obj.channel.setSelectedProjectionImageStack(image));
+                end
+            end
             
             if ~isempty(obj.channel.selectedProjectionImageStack)
-                uimenu(menu, 'Label', 'Reload Selected Projection Image Stack', ...
-                    'Separator', 'on', ...
-                    'Callback', @(varargin) obj.channel.selectedProjectionImageStack.reload());
+                if ~isempty(obj.channel.selectedProjectionImageStack.fileInfo)
+                    uimenu(menu, 'Label', 'Reload Selected Projection Image Stack', ...
+                        'Separator', 'on', ...
+                        'Callback', @(varargin) obj.channel.selectedProjectionImageStack.reload());
+                end
 
                 uimenu(menu, 'Label', 'Rename Selected Projection Image Stack', ...
+                    'Separator', isempty(obj.channel.selectedProjectionImageStack.fileInfo), ...
                     'Callback', @(varargin) obj.channel.selectedProjectionImageStack.editLabel());
                 
                 uimenu(menu, 'Label', 'Set Selected Projection Image Stack Frame Interval', ...
                     'Callback', @(varargin) obj.channel.selectedProjectionImageStack.editFrameInterval());
             end
             
-            uimenu(menu, 'Label', ['Sum Frame Blocks (' num2str(obj.channel.spotProjectionSumEveryNFrames) ')'], ...
+            uimenu(menu, 'Label', 'Clear Projections', ...
                 'Separator', 'on', ...
-                'Callback', @(varargin) obj.channel.editSumEveryNFrames());
+                'Callback', @(varargin) obj.channel.askToClearAllSpotProjections());
             
-            idealizationMethodMenu = uimenu(menu, 'Label', 'Idealization Method', ...
-                'Separator', 'on');
-            uimenu(idealizationMethodMenu, 'Label', 'None', ...
-                'Checked', obj.channel.spotProjectionIdealizationMethod == "", ...
-                'Callback', @(varargin) obj.channel.setSpotProjectionIdealizationMethod(""));
-            for method = ["DISC"]
-                uimenu(idealizationMethodMenu, 'Label', method, ...
-                    'Checked', obj.channel.spotProjectionIdealizationMethod == method, ...
-                    'Callback', @(varargin) obj.channel.setSpotProjectionIdealizationMethod(method));
-            end
-            uimenu(menu, 'Label', 'Idealization Parameters', ...
-                'Callback', @(varargin) obj.channel.editSpotProjectionIdealizationParams());
-            uimenu(menu, 'Label', 'Auto Idealize', ...
-                'Checked', obj.channel.spotProjectionAutoIdealize, ...
-                'Callback', @(varargin) obj.channel.toggleSpotProjectionAutoIdealize());
+            uimenu(menu, 'Label', 'Project All', ...
+                'Separator', 'on', ...
+                'Callback', @(varargin) obj.channel.updateSpotProjections());
+            
+            uimenu(menu, 'Label', ['Sum Frame Blocks (' num2str(obj.channel.spotProjectionSumFramesBlockSize) ')'], ...
+                'Separator', 'on', ...
+                'Callback', @(varargin) obj.channel.editSumFramesBlockSize());
+            
+%             idealizationMethodMenu = uimenu(menu, 'Label', 'Idealization Method', ...
+%                 'Separator', 'on');
+%             uimenu(idealizationMethodMenu, 'Label', 'None', ...
+%                 'Checked', obj.channel.spotProjectionIdealizationMethod == "", ...
+%                 'Callback', @(varargin) obj.channel.setSpotProjectionIdealizationMethod(""));
+%             for method = ["DISC"]
+%                 uimenu(idealizationMethodMenu, 'Label', method, ...
+%                     'Checked', obj.channel.spotProjectionIdealizationMethod == method, ...
+%                     'Callback', @(varargin) obj.channel.setSpotProjectionIdealizationMethod(method));
+%             end
+%             uimenu(menu, 'Label', 'Idealization Parameters', ...
+%                 'Callback', @(varargin) obj.channel.editSpotProjectionIdealizationParams());
+%             uimenu(menu, 'Label', 'Auto Idealize', ...
+%                 'Checked', obj.channel.spotProjectionAutoIdealize, ...
+%                 'Callback', @(varargin) obj.channel.toggleSpotProjectionAutoIdealize());
+%             
+%             uimenu(menu, 'Label', 'Clear Idealizations', ...
+%                 'Separator', 'on', ...
+%                 'Callback', @(varargin) obj.channel.clearAllSpotProjectionIdealizations(true));
+%             uimenu(menu, 'Label', 'Idealize Visible', ...
+%                 'Callback', @(varargin) obj.channel.idealizeSelectedSpotProjection());
+%             uimenu(menu, 'Label', 'Idealize All', ...
+%                 'Callback', @(varargin) obj.channel.idealizeAllSpotProjections([], true));
+            
+            uimenu(menu, 'Label', 'Simulate Time Series', ...
+                'Separator', 'on', ...
+                'Callback', @(varargin) obj.channel.simulateSpotProjections());
         end
         
         function infoTextPressed(obj)
@@ -446,12 +517,12 @@ classdef ChannelSpotProjectionViewer < handle
         end
         
         function numBinsEdited(obj)
-            obj.channel.projectionHistogramNumBins = str2num(obj.numBinsEdit.String);
+            obj.channel.spotProjectionHistogramNumBins = str2num(obj.numBinsEdit.String);
             obj.updateProjection();
         end
         
         function sqrtCountsBtnPressed(obj)
-            obj.channel.projectionHistogramSqrtCounts = obj.sqrtCountsBtn.Value > 0;
+            obj.channel.spotProjectionHistogramSqrtCounts = obj.sqrtCountsBtn.Value > 0;
             obj.updateProjection();
         end
     end
