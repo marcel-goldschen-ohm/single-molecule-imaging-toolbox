@@ -532,6 +532,9 @@ classdef Channel < handle
             end
             newImage = ImageStack;
             newImage.load(filepath, '', [], [], true);
+            if isempty(newImage.fileInfo)
+                return
+            end
             [~, newImage.label, ~] = fileparts(newImage.fileInfo(1).Filename);
             obj.images = [obj.images newImage];
             obj.selectedImage = newImage;
@@ -903,24 +906,6 @@ classdef Channel < handle
             obj.copyAlignedSpotsToOtherChannels(channels);
         end
         
-        function menu = removeImageMenu(obj, parent)
-            menu = uimenu(parent, 'Label', 'Remove Image');
-            for image = obj.images
-                uimenu(menu, 'Label', image.getLabelWithSizeInfo(), ...
-                    'Checked', isequal(image, obj.selectedImage), ...
-                    'Callback', @(varargin) obj.removeImage(image, true));
-            end
-        end
-        
-        function menu = selectImageMenu(obj, parent)
-            menu = uimenu(parent, 'Label', 'Select Image');
-            for image = obj.images
-                uimenu(menu, 'Label', image.getLabelWithSizeInfo(), ...
-                    'Checked', isequal(image, obj.selectedImage), ...
-                    'Callback', @(varargin) obj.setSelectedImage(image));
-            end
-        end
-        
         function menu = selectProjectionImageStackMenu(obj, parent)
             menu = uimenu(parent, 'Label', 'Select Projection Image Stack');
             for image = obj.images
@@ -929,52 +914,6 @@ classdef Channel < handle
                         'Checked', isequal(image, obj.selectedProjectionImageStack), ...
                         'Callback', @(varargin) obj.setSelectedProjectionImageStack(image));
                 end
-            end
-        end
-        
-        function menu = overlayChannelMenu(obj, parent)
-            menu = uimenu(parent, 'Label', 'Overlay Channel');
-            uimenu(menu, 'Label', 'None', ...
-                'Checked', isempty(obj.overlayChannel), ...
-                'Callback', @(varargin) obj.setOverlayChannel(Channel.empty));
-            for channel = obj.getOtherChannels()
-                uimenu(menu, 'Label', channel.label, ...
-                    'Checked', isequal(channel, obj.overlayChannel), ...
-                    'Callback', @(varargin) obj.setOverlayChannel(channel));
-            end
-        end
-        
-        function menu = overlayColorsMenu(obj, parent)
-            menu = uimenu(parent, 'Label', 'Overlay Colors');
-            uimenu(menu, 'Label', 'green-magenta', ...
-                'Checked', isequal(obj.overlayColorChannels, [2 1 2]), ...
-                'Callback', @(varargin) obj.setOverlayColorChannels([2 1 2]));
-            uimenu(menu, 'Label', 'magenta-green', ...
-                'Checked', isequal(obj.overlayColorChannels, [1 2 1]), ...
-                'Callback', @(varargin) obj.setOverlayColorChannels([1 2 1]));
-            uimenu(menu, 'Label', 'red-cyan', ...
-                'Checked', isequal(obj.overlayColorChannels, [1 2 2]), ...
-                'Callback', @(varargin) obj.setOverlayColorChannels([1 2 2]));
-            uimenu(menu, 'Label', 'cyan-red', ...
-                'Checked', isequal(obj.overlayColorChannels, [2 1 1]), ...
-                'Callback', @(varargin) obj.setOverlayColorChannels([2 1 1]));
-            uimenu(menu, 'Label', 'green-red', ...
-                'Checked', isequal(obj.overlayColorChannels, [2 1 0]), ...
-                'Callback', @(varargin) obj.setOverlayColorChannels([2 1 0]));
-            uimenu(menu, 'Label', 'red-green', ...
-                'Checked', isequal(obj.overlayColorChannels, [1 2 0]), ...
-                'Callback', @(varargin) obj.setOverlayColorChannels([1 2 0]));
-        end
-        
-        function menu = alignToChannelMenu(obj, parent)
-            menu = uimenu(parent, 'Label', 'Align To Channel');
-            uimenu(menu, 'Label', 'None', ...
-                'Checked', isempty(obj.alignedTo.channel), ...
-                'Callback', @(varargin) obj.alignToChannel(Channel.empty));
-            for channel = obj.getOtherChannels()
-                uimenu(menu, 'Label', channel.label, ...
-                    'Checked', isequal(obj.alignedTo.channel, channel), ...
-                    'Callback', @(varargin) obj.alignToChannel(channel));
             end
         end
     end

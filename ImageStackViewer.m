@@ -134,12 +134,13 @@ classdef ImageStackViewer < handle
         
         function updateListeners(obj)
             obj.deleteListeners();
-            if ~isempty(obj.imageStack)
-                obj.labelChangedListener = ...
-                    addlistener(obj.imageStack, 'LabelChanged', @(varargin) obj.updateInfoText());
-                obj.dataChangedListener = ...
-                    addlistener(obj.imageStack, 'DataChanged', @(varargin) obj.showFrame());
+            if isempty(obj.imageStack)
+                return
             end
+            obj.labelChangedListener = ...
+                addlistener(obj.imageStack, 'LabelChanged', @(varargin) obj.updateInfoText());
+            obj.dataChangedListener = ...
+                addlistener(obj.imageStack, 'DataChanged', @(varargin) obj.showFrame());
         end
         
         function parent = get.Parent(obj)
@@ -200,11 +201,12 @@ classdef ImageStackViewer < handle
         end
         
         function set.imageStack(obj, imageStack)
+            % MUST always have a valid image stack handle.
+            if isempty(imageStack)
+                imageStack = ImageStack;
+            end
             % Set handle to the displayed image stack. This updates
             % everything including the displayed image and frame slider.
-            if isequal(obj.imageStack, imageStack)
-                return
-            end
             zoomOut = isempty(obj.imageStack.data) || ~obj.isZoomed();
             obj.imageStack = imageStack;
             nframes = obj.imageStack.numFrames;

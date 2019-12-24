@@ -9,9 +9,6 @@ classdef SpotProjection < handle
         timeUnits = 'frames';
         dataUnits = 'au';
         
-        ideal = []; % idealization of adjustedData
-        known = []; % e.g. for simulations
-        
         % optional masking of raw data
         isMasked = false; % 1x1 (uniform) OR Tx1 (nonuniform), true=masked
         
@@ -26,8 +23,13 @@ classdef SpotProjection < handle
         % ...
         
         % idealization
+        idealizedData = []; % idealization of data
+        
         idealizationMethod = "";
         idealizationParams = struct;
+        
+        % simulation
+        trueData = []; % e.g. for simulations
     end
     
     properties (Dependent)
@@ -47,11 +49,11 @@ classdef SpotProjection < handle
         function set.rawData(obj, y)
             obj.rawData = reshape(y, [], 1);
         end
-        function set.ideal(obj, y)
-            obj.ideal = reshape(y, [], 1);
+        function set.idealizedData(obj, y)
+            obj.idealizedData = reshape(y, [], 1);
         end
-        function set.known(obj, y)
-            obj.known = reshape(y, [], 1);
+        function set.trueData(obj, y)
+            obj.trueData = reshape(y, [], 1);
         end
         function set.isMasked(obj, y)
             obj.isMasked = reshape(y, [], 1);

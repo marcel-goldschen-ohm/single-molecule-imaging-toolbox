@@ -9,6 +9,8 @@ classdef ImageStack < handle
     %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
     
     properties
+        % DATA PROPERTIES
+        
         % string label
         label = "";
         
@@ -34,8 +36,7 @@ classdef ImageStack < handle
         % Data modified as compared to file?
         fileDataModified = false;
         
-        % BELOW PROPERTIES ARE PRIMARILY FOR THE USER INTERFACE
-        % THEY MOSTLY JUST REFER TO THE ABOVE DATA PROPERTIES
+        % USER INTERFACE PROPERTIES
         
         % Selected frame.
         selectedFrameIndex = 1;
@@ -46,14 +47,14 @@ classdef ImageStack < handle
         height
         numFrames
         totalDuration
+        selectedFrame
     end
     
     events
-        % EVENTS ARE PRIMARILY FOR THE USER INTERFACE
         LabelChanged
         DataChanged
-        SelectedFrameChanged
         FrameIntervalChanged
+        SelectedFrameChanged
     end
     
     methods
@@ -65,14 +66,6 @@ classdef ImageStack < handle
             obj.label = string(s);
             notify(obj, 'LabelChanged');
         end
-        
-%         function set.data(obj, data)
-%             obj.data = data;
-%             notify(obj, 'DataChanged');
-%             if ~isempty(obj.fileInfo)
-%                 obj.fileDataModified = true;
-%             end
-%         end
         
         function w = get.width(obj)
             w = 0;
@@ -119,7 +112,7 @@ classdef ImageStack < handle
             if isempty(obj.frameIntervalSec)
                 dur = obj.numFrames;
             else
-                dur = (obj.numFrames - 1) * obj.frameIntervalSec;
+                dur = obj.numFrames * obj.frameIntervalSec;
             end
         end
         
@@ -128,16 +121,18 @@ classdef ImageStack < handle
         end
         
         function set.selectedFrameIndex(obj, t)
-            t = max(1, min(t, obj.numFrames));
-            if obj.selectedFrameIndex ~= t
-                obj.selectedFrameIndex = t;
-                notify(obj, 'SelectedFrameChanged');
-            end
+            t = max(0, min(t, obj.numFrames));
+            obj.selectedFrameIndex = t;
+            notify(obj, 'SelectedFrameChanged');
         end
         
         function set.frameIntervalSec(obj, dt)
             obj.frameIntervalSec = dt;
             notify(obj, 'FrameIntervalChanged');
+        end
+        
+        function frame = get.selectedFrame(obj)
+            frame = obj.getFrame();
         end
         
         function frame = getFrame(obj, t)
@@ -165,8 +160,8 @@ classdef ImageStack < handle
             end
         end
         
-        function label = getLabelWithSizeInfo(obj)
-            %GETLABELWITHSIZEINFO Return the image label with size info
+        function label = getLabelWithInfo(obj)
+            %GETLABELWITHINFO Return the image label with size/rate info
             w = obj.width;
             h = obj.height;
             t = obj.numFrames;
@@ -196,7 +191,9 @@ classdef ImageStack < handle
         end
         
         function clear(obj)
+            %obj.label = "";
             obj.data = [];
+            obj.frameIntervalSec = [];
             obj.fileInfo = struct.empty;
             obj.fileFrames = [];
             obj.filePixelRegion = {};
@@ -261,8 +258,8 @@ classdef ImageStack < handle
                     labels{end+1} = ['Frames 1:' num2str(nframes) ' (first:last, first:stride:last, empty=all)'];
                     defaults{end+1} = ['1:' num2str(nframes)];
                 end
-                labels{end+1} = 'Pixel Region (row start, col start, row end, col end), empty=full';
-                defaults{end+1} = ['1, 1, ' num2str(height) ', ' num2str(width)];
+                labels{end+1} = 'Pixel Region (rows first:last, columns first:last), empty=full';
+                defaults{end+1} = ['1:' num2str(height) ', 1:' num2str(width)];
                 answer = inputdlg(labels, 'Load Image Stack Options', 1, defaults);
                 if ~isempty(answer)
                     if nframes > 1
@@ -290,14 +287,21 @@ classdef ImageStack < handle
                     if isempty(pixelRegionAnswer)
                         pixelRegion = {};
                     else
+                        ok = false;
                         fields = strsplit(pixelRegionAnswer, ',');
-                        if numel(fields) == 4
-                            rowstart = str2num(fields{1});
-                            colstart = str2num(fields{2});
-                            rowend = str2num(fields{3});
-                            colend = str2num(fields{4});
-                            pixelRegion = {[rowstart rowend], [colstart colend]};
-                        else
+                        if numel(fields) == 2
+                            rows = strsplit(fields{1}, ':');
+                            cols = strsplit(fields{2}, ':');
+                            if numel(rows) == 2 && numel(cols) == 2
+                                rowstart = str2num(rows{1});
+                                rowend = str2num(rows{2});
+                                colstart = str2num(cols{1});
+                                colend = str2num(cols{2});
+                                pixelRegion = {[rowstart rowend], [colstart colend]};
+                                ok = true;
+                            end
+                        end
+                        if ~ok
                             errordlg(['Invalid pixel region: ' pixelRegionAnswer]);
                             return
                         end
@@ -482,7 +486,7 @@ classdef ImageStack < handle
             %DUPLICATE Return a copy of the specified frames
             newobj = ImageStack;
             if isempty(obj.data)
-                errordlg('Requires an image.', 'Duplicate');
+                errordlg('Requires image data to be loaded.', 'Duplicate');
                 return
             end
             nframes = obj.numFrames;
@@ -528,9 +532,8 @@ classdef ImageStack < handle
             end
             % duplicate
             try
-                if ~isempty(obj.data)
-                    newobj.data = obj.data(:,:,frames);
-                end
+                newobj.data = obj.data(:,:,frames);
+                newobj.frameIntervalSec = obj.frameIntervalSec;
                 if ~isempty(obj.fileInfo)
                     newobj.fileInfo = obj.fileInfo(frames);
                     if ~isempty(obj.fileFrames)
@@ -555,6 +558,10 @@ classdef ImageStack < handle
             nframes = obj.numFrames;
             if nframes <= 1
                 errordlg('Requires an image stack.', 'Z-Project');
+                return
+            end
+            if isempty(obj.data)
+                errordlg('Requires image stack data to be loaded.', 'Z-Project');
                 return
             end
             if (exist('previewImage', 'var') && isgraphics(previewImage)) ...
@@ -671,29 +678,29 @@ classdef ImageStack < handle
             end
         end
         
-        function gaussFilter(obj, frame, sigma, previewImage, applyToAllFrames)
+        function gaussFilter(obj, t, sigma, previewImage, applyToAllFrames)
             if isempty(obj.data)
                 errordlg('Requires image data to be loaded.', 'Gaussian Filter');
                 return
             end
-            if ~exist('frame', 'var') || isempty(frame)
-                frame = 1;
+            if ~exist('t', 'var') || isempty(t)
+                t = 1;
             end
             nframes = obj.numFrames;
-            frame = max(1, min(frame, nframes));
+            t = max(1, min(t, nframes));
             if ~exist('sigma', 'var')
                 sigma = [];
             end
             if ~exist('previewImage', 'var')
                 previewImage = gobjects(0);
             end
-            im = obj.getFrame(frame);
-            [im, sigma] = ImageOps.gaussFilterPreview(im, sigma, previewImage);
-            if isempty(im)
+            frame = obj.getFrame(t);
+            [filteredFrame, sigma] = ImageOps.gaussFilterPreview(frame, sigma, previewImage);
+            if isempty(filteredFrame)
                 return
             end
             % filter frame
-            obj.data(:,:,frame) = im;
+            obj.data(:,:,t) = filteredFrame;
             % filter all other frames?
             if nframes > 1
                 if ~exist('applyToAllFrames', 'var') || isempty(applyToAllFrames)
@@ -703,8 +710,9 @@ classdef ImageStack < handle
                 if applyToAllFrames
                     wb = waitbar(0, 'Filtering stack...');
                     framesPerWaitbarUpdate = floor(double(nframes) / 20);
+                    t0 = t;
                     for t = 1:nframes
-                        if t ~= frame
+                        if t ~= t0
                             obj.data(:,:,t) = imgaussfilt(obj.data(:,:,t), sigma);
                         end
                         % updating waitbar is expensive, so do it sparingly
@@ -719,29 +727,29 @@ classdef ImageStack < handle
             notify(obj, 'DataChanged');
         end
         
-        function tophatFilter(obj, frame, diskRadius, previewImage, applyToAllFrames)
+        function tophatFilter(obj, t, diskRadius, previewImage, applyToAllFrames)
             if isempty(obj.data)
                 errordlg('Requires image data to be loaded.', 'Tophat Filter');
                 return
             end
-            if ~exist('frame', 'var') || isempty(frame)
-                frame = 1;
+            if ~exist('t', 'var') || isempty(t)
+                t = 1;
             end
             nframes = obj.numFrames;
-            frame = max(1, min(frame, nframes));
+            t = max(1, min(t, nframes));
             if ~exist('diskRadius', 'var')
                 diskRadius = [];
             end
             if ~exist('previewImage', 'var')
                 previewImage = gobjects(0);
             end
-            im = obj.getFrame(frame);
-            [im, diskRadius] = ImageOps.tophatFilterPreview(im, diskRadius, previewImage);
-            if isempty(im)
+            frame = obj.getFrame(t);
+            [filteredFrame, diskRadius] = ImageOps.tophatFilterPreview(frame, diskRadius, previewImage);
+            if isempty(filteredFrame)
                 return
             end
             % filter frame
-            obj.data(:,:,frame) = im;
+            obj.data(:,:,t) = filteredFrame;
             % filter all other frames?
             if nframes > 1
                 if ~exist('applyToAllFrames', 'var') || isempty(applyToAllFrames)
@@ -753,8 +761,9 @@ classdef ImageStack < handle
                     wb = waitbar(0, 'Filtering stack...');
                     framesPerWaitbarUpdate = floor(double(nframes) / 20);
                     disk = strel('disk', diskRadius);
+                    t0 = t;
                     for t = 1:nframes
-                        if t ~= frame
+                        if t ~= t0
                             obj.data(:,:,t) = imtophat(obj.data(:,:,t), disk);
                         end
                         % updating waitbar is expensive, so do it sparingly
@@ -769,25 +778,25 @@ classdef ImageStack < handle
             notify(obj, 'DataChanged');
         end
         
-        function newobj = threshold(obj, frame, threshold, previewImage)
+        function newobj = threshold(obj, t, threshold, previewImage)
             newobj = ImageStack;
             if isempty(obj.data)
                 errordlg('Requires image data to be loaded.', 'Threshold');
                 return
             end
-            if ~exist('frame', 'var') || isempty(frame)
-                frame = 1;
+            if ~exist('t', 'var') || isempty(t)
+                t = 1;
             end
             nframes = obj.numFrames;
-            frame = max(1, min(frame, nframes));
+            t = max(1, min(t, nframes));
             if ~exist('threshold', 'var')
                 threshold = [];
             end
             if ~exist('previewImage', 'var')
                 previewImage = gobjects(0);
             end
-            im = obj.getFrame(frame);
-            [mask, threshold] = ImageOps.thresholdPreview(im, threshold, previewImage);
+            frame = obj.getFrame(t);
+            [mask, threshold] = ImageOps.thresholdPreview(frame, threshold, previewImage);
             if isempty(mask)
                 return
             end

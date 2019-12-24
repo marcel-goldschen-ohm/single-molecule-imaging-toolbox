@@ -33,10 +33,9 @@ classdef ChannelImageViewer < ImageStackViewer
     properties (Access = private)
         channelLabelChangedListener = event.listener.empty;
         selectedImageChangedListener = event.listener.empty;
-%         selectedFrameChangedListener = event.listener.empty;
         spotsChangedListener = event.listener.empty;
         selectedSpotChangedListener = event.listener.empty;
-        alignedToChangedListener = event.listener.empty;
+        alignedToChannelChangedListener = event.listener.empty;
         overlayChannelChangedListener = event.listener.empty;
     end
     
@@ -102,7 +101,6 @@ classdef ChannelImageViewer < ImageStackViewer
                 obj.menuButton ...
                 obj.zoomOutButton ...
                 obj.brightnessContrastButton ...
-                obj.selectedSpotMarker ...
                 ];
             delete(h(isgraphics(h)));
         end
@@ -116,10 +114,6 @@ classdef ChannelImageViewer < ImageStackViewer
                 delete(obj.selectedImageChangedListener);
                 obj.selectedImageChangedListener = event.listener.empty;
             end
-%             if isvalid(obj.selectedFrameChangedListener)
-%                 delete(obj.selectedFrameChangedListener);
-%                 obj.selectedFrameChangedListener = event.listener.empty;
-%             end
             if isvalid(obj.spotsChangedListener)
                 delete(obj.spotsChangedListener);
                 obj.spotsChangedListener = event.listener.empty;
@@ -128,9 +122,9 @@ classdef ChannelImageViewer < ImageStackViewer
                 delete(obj.selectedSpotChangedListener);
                 obj.selectedSpotChangedListener = event.listener.empty;
             end
-            if isvalid(obj.alignedToChangedListener)
-                delete(obj.alignedToChangedListener);
-                obj.alignedToChangedListener = event.listener.empty;
+            if isvalid(obj.alignedToChannelChangedListener)
+                delete(obj.alignedToChannelChangedListener);
+                obj.alignedToChannelChangedListener = event.listener.empty;
             end
             if isvalid(obj.overlayChannelChangedListener)
                 delete(obj.overlayChannelChangedListener);
@@ -140,27 +134,29 @@ classdef ChannelImageViewer < ImageStackViewer
         
         function updateListeners(obj)
             obj.deleteListeners();
-            if ~isempty(obj.channel)
-                obj.channelLabelChangedListener = ...
-                    addlistener(obj.channel, 'LabelChanged', @(varargin) obj.onChannelLabelChanged());
-                obj.selectedImageChangedListener = ...
-                    addlistener(obj.channel, 'SelectedImageChanged', @(varargin) obj.onSelectedImageChanged());
-%                 if ~isempty(obj.channel.selectedImage)
-%                     obj.selectedFrameChangedListener = ...
-%                         addlistener(obj.channel, 'SelectedFrameChanged', @(varargin) obj.onSelectedImageChanged());
-%                 end
-                obj.spotsChangedListener = ...
-                    addlistener(obj.channel, 'SpotsChanged', @(varargin) obj.onSpotsChanged());
-                obj.selectedSpotChangedListener = ...
-                    addlistener(obj.channel, 'SelectedSpotChanged', @(varargin) obj.onSelectedSpotChanged());
-                obj.alignedToChangedListener = ...
-                    addlistener(obj.channel, 'AlignedToChanged', @(varargin) obj.showFrame());
-                obj.overlayChannelChangedListener = ...
-                    addlistener(obj.channel, 'OverlayChannelChanged', @(varargin) obj.showFrame());
+            if isempty(obj.channel)
+                return
             end
+            obj.channelLabelChangedListener = ...
+                addlistener(obj.channel, 'LabelChanged', @(varargin) obj.onChannelLabelChanged());
+            obj.selectedImageChangedListener = ...
+                addlistener(obj.channel, 'SelectedImageChanged', @(varargin) obj.onSelectedImageChanged());
+            obj.spotsChangedListener = ...
+                addlistener(obj.channel, 'SpotsChanged', @(varargin) obj.onSpotsChanged());
+            obj.selectedSpotChangedListener = ...
+                addlistener(obj.channel, 'SelectedSpotChanged', @(varargin) obj.onSelectedSpotChanged());
+            obj.alignedToChannelChangedListener = ...
+                addlistener(obj.channel, 'AlignedToChanged', @(varargin) obj.showFrame());
+            obj.overlayChannelChangedListener = ...
+                addlistener(obj.channel, 'OverlayChannelChanged', @(varargin) obj.showFrame());
         end
         
         function set.channel(obj, channel)
+            % MUST always have a valid channel handle.
+            if isempty(channel)
+                channel = Channel;
+            end
+            
             % set handle to channel and update displayed image
             obj.channel = channel;
             obj.imageAxes.YLabel.String = channel.label;
@@ -263,14 +259,14 @@ classdef ChannelImageViewer < ImageStackViewer
         
         function menuButtonPressed(obj)
             %MENUBUTTONPRESSED Handle menu button press.
-            menu = obj.getActionsMenu();
+            menu = obj.getMenu();
             fig = ancestor(obj.Parent, 'Figure');
             menu.Parent = fig;
             menu.Position(1:2) = obj.menuButton.Position(1:2);
             menu.Visible = 1;
         end
         
-        function menu = getActionsMenu(obj)
+        function menu = getMenu(obj)
             %GETACTIONSMENU Return menu with channel image actions.
             menu = uicontextmenu;
             
@@ -283,11 +279,16 @@ classdef ChannelImageViewer < ImageStackViewer
             
             nimages = numel(obj.channel.images);
             if nimages > 1
-                submenu = obj.channel.selectImageMenu(menu);
-                submenu.Separator = 'on';
+                submenu = uimenu(menu, 'Label', 'Select Image', ...
+                    'Separator', 'on');
+                for image = obj.channel.images
+                    uimenu(submenu, 'Label', image.getLabelWithInfo(), ...
+                        'Checked', isequal(image, obj.channel.selectedImage), ...
+                        'Callback', @(varargin) obj.channel.setSelectedImage(image));
+                end
             end
             
-            uimenu(menu, 'Label', 'Load Image', ...
+            uimenu(menu, 'Label', 'Load Image (Stack) From File', ...
                 'Separator', nimages <= 1, ...
                 'Callback', @(varargin) obj.channel.loadNewImage());
             
@@ -295,33 +296,74 @@ classdef ChannelImageViewer < ImageStackViewer
                 return
             end
             
+            if nimages > 0
+                submenu = uimenu(menu, 'Label', 'Remove Image');
+                for image = obj.channel.images
+                    uimenu(submenu, 'Label', image.getLabelWithInfo(), ...
+                        'Checked', isequal(image, obj.channel.selectedImage), ...
+                        'Callback', @(varargin) obj.channel.removeImage(image, true));
+                end
+            end
+            
             if ~isempty(obj.channel.selectedImage)
-                uimenu(menu, 'Label', 'Reload Selected Image', ...
+                uimenu(menu, 'Label', 'Reload Image From File', ...
+                    'Separator', 'on', ...
                     'Callback', @(varargin) obj.channel.selectedImage.reload());
 
-                uimenu(menu, 'Label', 'Rename Selected Image', ...
+                uimenu(menu, 'Label', 'Rename Image', ...
                     'Callback', @(varargin) obj.channel.selectedImage.editLabel());
                 
                 if obj.channel.selectedImage.numFrames > 1
-                    uimenu(menu, 'Label', 'Set Selected Image Frame Interval', ...
+                    uimenu(menu, 'Label', 'Set Image Stack Frame Interval', ...
                         'Callback', @(varargin) obj.channel.selectedImage.editFrameInterval());
                 end
             end
             
-            if nimages > 0
-                obj.channel.removeImageMenu(menu);
-            end
-            
             otherChannels = obj.channel.getOtherChannels();
             if ~isempty(otherChannels)
-                submenu = obj.channel.overlayChannelMenu(menu);
-                submenu.Separator = 'on';
-                obj.channel.overlayColorsMenu(menu);
+                submenu = uimenu(menu, 'Label', 'Overlay Channel', ...
+                    'Separator', 'on');
+                uimenu(submenu, 'Label', 'None', ...
+                    'Checked', isempty(obj.channel.overlayChannel), ...
+                    'Callback', @(varargin) obj.channel.setOverlayChannel(Channel.empty));
+                for channel = otherChannels
+                    uimenu(submenu, 'Label', channel.label, ...
+                        'Checked', isequal(channel, obj.channel.overlayChannel), ...
+                        'Callback', @(varargin) obj.channel.setOverlayChannel(channel));
+                end
+                
+                submenu = uimenu(menu, 'Label', 'Overlay Colors');
+                uimenu(submenu, 'Label', 'green-magenta', ...
+                    'Checked', isequal(obj.channel.overlayColorChannels, [2 1 2]), ...
+                    'Callback', @(varargin) obj.channel.setOverlayColorChannels([2 1 2]));
+                uimenu(submenu, 'Label', 'magenta-green', ...
+                    'Checked', isequal(obj.channel.overlayColorChannels, [1 2 1]), ...
+                    'Callback', @(varargin) obj.channel.setOverlayColorChannels([1 2 1]));
+                uimenu(submenu, 'Label', 'red-cyan', ...
+                    'Checked', isequal(obj.channel.overlayColorChannels, [1 2 2]), ...
+                    'Callback', @(varargin) obj.channel.setOverlayColorChannels([1 2 2]));
+                uimenu(submenu, 'Label', 'cyan-red', ...
+                    'Checked', isequal(obj.channel.overlayColorChannels, [2 1 1]), ...
+                    'Callback', @(varargin) obj.channel.setOverlayColorChannels([2 1 1]));
+                uimenu(submenu, 'Label', 'green-red', ...
+                    'Checked', isequal(obj.channel.overlayColorChannels, [2 1 0]), ...
+                    'Callback', @(varargin) obj.channel.setOverlayColorChannels([2 1 0]));
+                uimenu(submenu, 'Label', 'red-green', ...
+                    'Checked', isequal(obj.channel.overlayColorChannels, [1 2 0]), ...
+                    'Callback', @(varargin) obj.channel.setOverlayColorChannels([1 2 0]));
             end
             
             if ~isempty(otherChannels)
-                submenu = obj.channel.alignToChannelMenu(menu);
-                submenu.Separator = 'on';
+                submenu = uimenu(menu, 'Label', 'Align To Channel', ...
+                    'Separator', 'on');
+                uimenu(submenu, 'Label', 'None', ...
+                    'Checked', isempty(obj.channel.alignedTo.channel), ...
+                    'Callback', @(varargin) obj.channel.alignToChannel(Channel.empty));
+                for channel = otherChannels
+                    uimenu(submenu, 'Label', channel.label, ...
+                        'Checked', isequal(obj.channel.alignedTo.channel, channel), ...
+                        'Callback', @(varargin) obj.channel.alignToChannel(channel));
+                end
             end
             
             uimenu(menu, 'Label', 'Autoscale', ...
@@ -360,17 +402,12 @@ classdef ChannelImageViewer < ImageStackViewer
         
         function infoTextPressed(obj)
             %INFOTEXTPRESSED Handle button press in info text area.
-            if numel(obj.channel.images) <= 1
-                return
-            end
-            
             menu = uicontextmenu;
-            submenu = obj.channel.selectImageMenu(menu);
-            % put submenu items directly into menu
-            while ~isempty(submenu.Children)
-                submenu.Children(end).Parent = menu;
+            for image = obj.channel.images
+                uimenu(menu, 'Label', image.getLabelWithInfo(), ...
+                    'Checked', isequal(image, obj.channel.selectedImage), ...
+                    'Callback', @(varargin) obj.channel.setSelectedImage(image));
             end
-            delete(submenu);
             
             fig = ancestor(obj.Parent, 'Figure');
             menu.Parent = fig;
@@ -401,7 +438,7 @@ classdef ChannelImageViewer < ImageStackViewer
             elseif event.Button == 2 % middle
             elseif event.Button == 3 % right
                 % popup menu
-                menu = obj.getActionsMenu();
+                menu = obj.getMenu();
                 fig = ancestor(obj.Parent, 'Figure');
                 menu.Parent = fig;
                 menu.Position(1:2) = get(fig, 'CurrentPoint');
