@@ -173,7 +173,8 @@ classdef ImageStack < handle
                 label = obj.label;
             end
             if ~isempty(obj.frameIntervalSec)
-                label = sprintf('%s@%.0fHz', label, 1.0 / obj.frameIntervalSec);
+                Hz = 1.0 / obj.frameIntervalSec;
+                label = sprintf('%s@%.1fHz', label, Hz);
             end
         end
         
