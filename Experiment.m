@@ -14,21 +14,25 @@ classdef Experiment < handle
         % Row vector of channels.
         channels = Channel.empty(1,0);
         
-        % USER INTERFACE PROPERTIES
+        % STATE PROPERTIES
         
         % Selected spot index.
         selectedSpotIndex = [];
         
-        % Spot selection tags mask.
-        % Navigation and selection will only involve spots with tags that
-        % intersect these tags.
-        spotTagsMask = string.empty;
+        % generic container for model info and params
+        model = struct( ...
+            'name', 'DISC', ...
+            'alpha', 0.05, ...
+            'informationCriterion', 'BIC-GMM' ...
+            );
     end
     
     events
+        IdChanged
+        NotesChanged
         ChannelsChanged
         SelectedSpotIndexChanged
-        SpotTagsMaskChanged
+        ModelChanged
     end
     
     methods
@@ -36,6 +40,15 @@ classdef Experiment < handle
             %EXPERIMENT Constructor.
         end
         
+        function set.id(obj, id)
+            obj.id = id;
+            notify(obj, 'IdChanged');
+        end
+        
+        function set.notes(obj, notes)
+            obj.notes = notes;
+            notify(obj, 'NotesChanged');
+        end
         function setNotes(obj, notes)
             obj.notes = notes;
         end
@@ -70,7 +83,7 @@ classdef Experiment < handle
             % max # spots across channels
             [nspotsmax, cmax] = max(nspots);
             % nothing
-            if isempty(k) || nspotsmax == 0
+            if isempty(k) || isempty(nspots) || nspotsmax == 0
                 obj.selectedSpotIndex = [];
                 notify(obj, 'SelectedSpotIndexChanged');
                 return
@@ -94,21 +107,7 @@ classdef Experiment < handle
             obj.selectedSpotIndex = k;
             notify(obj, 'SelectedSpotIndexChanged');
         end
-        
-        function set.spotTagsMask(obj, tags)
-            if isempty(tags)
-                obj.spotTagsMask = string.empty;
-            elseif ischar(tags) || (isstring(tags) && numel(tags) == 1)
-                obj.spotTagsMask = Spot.str2arr(tags, ',');
-            elseif isstring(tags)
-                obj.spotTagsMask = tags;
-            else
-                return
-            end
-            notify(obj, 'SpotTagsMaskChanged');
-        end
-        
-        function prevSpot(obj)
+        function prevSpot(obj, tagsMask)
             % # spots for each channel
             nspots = arrayfun(@(channel) numel(channel.spots), obj.channels);
             % max # spots across channels
@@ -125,7 +124,7 @@ classdef Experiment < handle
                 % prev valid index
                 k = max(1, min(obj.selectedSpotIndex - 1, nspotsmax));
             end
-            if isempty(obj.spotTagsMask)
+            if ~exist('tagsMask', 'var') || isempty(tagsMask)
                 obj.selectedSpotIndex = k;
             else
                 % find prev spot (any channel) whose tags intersect the mask tags
@@ -133,7 +132,7 @@ classdef Experiment < handle
                     for c = 1:numel(obj.channels)
                         channel = obj.channels(c);
                         if nspots(c) >= k
-                            if ~isempty(intersect(obj.spotTagsMask, channel.spots(k).tags))
+                            if ~isempty(intersect(tagsMask, channel.spots(k).tags))
                                 obj.selectedSpotIndex = k;
                                 return
                             end
@@ -143,8 +142,7 @@ classdef Experiment < handle
                 end
             end
         end
-        
-        function nextSpot(obj)
+        function nextSpot(obj, tagsMask)
             % # spots for each channel
             nspots = arrayfun(@(channel) numel(channel.spots), obj.channels);
             % max # spots across channels
@@ -161,7 +159,7 @@ classdef Experiment < handle
                 % next valid index
                 k = max(1, min(obj.selectedSpotIndex + 1, nspotsmax));
             end
-            if isempty(obj.spotTagsMask)
+            if ~exist('tagsMask', 'var') || isempty(tagsMask)
                 obj.selectedSpotIndex = k;
             else
                 % find next spot (any channel) whose tags intersect the mask tags
@@ -169,7 +167,7 @@ classdef Experiment < handle
                     for c = 1:numel(obj.channels)
                         channel = obj.channels(c);
                         if nspots(c) >= k
-                            if ~isempty(intersect(obj.spotTagsMask, channel.spots(k).tags))
+                            if ~isempty(intersect(tagsMask, channel.spots(k).tags))
                                 obj.selectedSpotIndex = k;
                                 return
                             end
@@ -177,6 +175,87 @@ classdef Experiment < handle
                     end
                     k = k + 1;
                 end
+            end
+        end
+        
+        function set.model(obj, model)
+            if isstruct(model)
+                obj.model = model;
+            else % assume model is a string or char name
+                obj.model.name = string(model);
+                obj.editModelParams();
+            end
+            notify(obj, 'ModelChanged');
+        end
+        function editModelParams(obj)
+            if ~isfield(obj.model, 'name') || isempty(obj.model.name)
+                return
+            end
+            if obj.model.name == "DISC"
+                obj.editDiscModelParams();
+            end
+        end
+        function editDiscModelParams(obj)
+            % default params
+            newmodel.name = 'DISC';
+            newmodel.alpha = 0.05;
+            newmodel.informationCriterion = "BIC-GMM";
+            try
+                alpha = obj.model.alpha;
+                if alpha > 0 && alpha < 1
+                    newmodel.alpha = alpha;
+                end
+            catch
+            end
+            ICs = ["AIC-GMM", "BIC-GMM", "BIC-RSS", "HQC-GMM", "MDL"];
+            try
+                IC = string(obj.model.informationCriterion);
+                if any(ICs == IC)
+                    newmodel.informationCriterion = IC;
+                end
+            catch
+            end
+            % params dialog
+            dlg = dialog('Name', 'DISC');
+            w = 200;
+            lh = 20;
+            h = 2*lh + 30;
+            dlg.Position(3) = w;
+            dlg.Position(4) = h;
+            y = h - lh;
+            uicontrol(dlg, 'Style', 'text', 'String', 'alpha', ... % char(hex2dec('03b1'))
+                'HorizontalAlignment', 'right', ...
+                'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+            uicontrol(dlg, 'Style', 'edit', 'String', num2str(newmodel.alpha), ...
+                'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+                'Callback', @setAlpha_);
+            y = y - lh;
+            uicontrol(dlg, 'Style', 'text', 'String', 'Information Criterion', ...
+                'HorizontalAlignment', 'right', ...
+                'Units', 'pixels', 'Position', [0, y, w/2, lh]);
+            uicontrol(dlg, 'Style', 'popupmenu', ...
+                'String', ICs, ...
+                'Value', find(ICs == newmodel.informationCriterion, 1), ...
+                'Units', 'pixels', 'Position', [w/2, y, w/2, lh], ...
+                'Callback', @setInformationCriterion_);
+            y = 0;
+            uicontrol(dlg, 'Style', 'pushbutton', 'String', 'OK', ...
+                'Units', 'pixels', 'Position', [w/2-55, y, 50, 30], ...
+                'Callback', @ok_);
+            uicontrol(dlg, 'Style', 'pushbutton', 'String', 'Cancel', ...
+                'Units', 'pixels', 'Position', [w/2+5, y, 50, 30], ...
+                'Callback', 'delete(gcf)');
+            uiwait(dlg);
+            function setAlpha_(s,e)
+                newmodel.alpha = str2num(s.String);
+            end
+            function setInformationCriterion_(s,e)
+                newmodel.informationCriterion = string(s.String{s.Value});
+            end
+            function ok_(varargin)
+                obj.model = newmodel;
+                % close dialog
+                delete(dlg);
             end
         end
     end
