@@ -6,6 +6,9 @@ classdef Spot < handle
     %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
     
     properties
+        % Parent channel.
+        channel = Channel.empty;
+        
         % spot image location [x,y]
         % (1x2) x,y --> fixed location for all image frames
         % (Tx2) x,y --> per frame locations (i.e. for drift correction)
@@ -18,7 +21,7 @@ classdef Spot < handle
         tags = string.empty;
         
         % used for projections, e.g. the spot PSF
-        projectionMask = logical([ ...
+        mask = logical([ ...
             0 1 1 1 0; ...
             1 1 1 1 1; ...
             1 1 1 1 1; ...
@@ -26,29 +29,84 @@ classdef Spot < handle
             0 1 1 1 0  ...
             ]);
         
-        % Spot image intensity projection across time frames.
-        time = []; % time array OR sample interval (sec)
-        data = []; % spot intensity z-projection
-        sumFramesBlockSize = 1; % sum blocks of frames, e.g. simulate longer exposures
-        idealizedData = []; % idealization of data
-        perfectData = []; % e.g. from simulations
+        % e.g. Image stack spot z-projection.
+        zproj = TimeSeries;
+        
+        % Model idealization of z-projection time series data.
+        zprojModel = struct(); % generic container for model params and arrays
+        
+        % Known model for comparison when evaluating different models.
+        % e.g. from simulation
+        zprojKnownModel = struct(); % generic container for model params and arrays
     end
     
-    events
-        LocationChanged
-        TagsChanged
-        ProjectionChanged
+    properties (Dependent)
+        x
+        y
+        row
+        col
     end
     
     methods
         function obj = Spot()
             %SPOT Constructor.
-            obj.projection = SpotProjection;
         end
         
-        function set.xy(obj, xy)
-            obj.xy = xy;
-            notify(obj, 'LocationChanged');
+        function x = get.x(obj)
+            if isempty(obj.xy)
+                x = [];
+                return
+            end
+            try
+                x = obj.xy(:,1);
+            catch
+                x = [];
+            end
+        end
+        function y = get.y(obj)
+            if isempty(obj.xy)
+                y = [];
+                return
+            end
+            try
+                y = obj.xy(:,2);
+            catch
+                y = [];
+            end
+        end
+        function row = get.row(obj)
+            if isempty(obj.xy)
+                row = [];
+                return
+            end
+            try
+                row = uint16(round(obj.y));
+            catch
+                row = [];
+            end
+        end
+        function col = get.col(obj)
+            if isempty(obj.xy)
+                col = [];
+                return
+            end
+            try
+                col = uint16(round(obj.x));
+            catch
+                col = [];
+            end
+        end
+        function set.x(obj, x)
+            obj.xy(:,1) = x;
+        end
+        function set.y(obj, y)
+            obj.xy(:,2) = y;
+        end
+        function set.row(obj, row)
+            obj.xy(:,2) = row;
+        end
+        function set.col(obj, col)
+            obj.xy(:,1) = col;
         end
         
         function set.tags(obj, tags)
@@ -61,154 +119,82 @@ classdef Spot < handle
             else
                 return
             end
-            notify(obj, 'TagsChanged');
         end
-        
         function str = getTagsString(obj)
-            if isempty(obj.tags)
-                str = "";
-            else
-                str = strjoin(obj.tags, ",");
-            end
+            str = Spot.arr2str(obj.tags, ",");
         end
         
-        function x = get.time(obj)
-            ny = size(obj.data, 1);
-            if ny == 0
-                x = [];
-                return
-            end
-            nx = size(obj.time, 1);
-            if nx == 0
-                % frames
-                x = reshape([1:ny], [], 1);
-            elseif nx == 1
-                % sample interval
-                dt = obj.time;
-                x = dt .* reshape([0:ny-1], [], 1);
+        function [mask3d, rows, cols] = getMaskZProjection(obj, imstack)
+            mrows = size(obj.mask, 1);
+            mcols = size(obj.mask, 2);
+            rowmins = obj.row - ceil(mrows / 2) + 1;
+            colmins = obj.col - ceil(mcols / 2) + 1;
+            rowmaxs = rowmins + mrows - 1;
+            colmaxs = colmins + mcols - 1;
+            rowmin = min(rowmins);
+            rowmax = max(rowmaxs);
+            colmin = min(colmins);
+            colmax = max(colmaxs);
+            rows = rowmin:rowmax;
+            cols = colmin:colmax;
+            nrows = numel(rows);
+            ncols = numel(cols);
+            nframes = imstack.numFrames;
+            if nrows == mrows && ncols == mcols
+                mask3d = repmat(obj.mask, 1, 1, nframes);
             else
-                % time pts
-                x = obj.time;
-            end
-            if ~isempty(x) && obj.sumFramesBlockSize > 1
-                n = obj.sumFramesBlockSize;
-                npts = floor(double(length(x)) / n) * n;
-                x = x(1:n:npts);
-            end
-        end
-        function set.time(obj, x)
-            obj.time = reshape(x, [], 1);
-        end
-        
-        function y = get.data(obj)
-            y = obj.data;
-            if isempty(y)
-                return
-            end
-            % sum frame blocks?
-            if obj.sumFramesBlockSize > 1
-                n = obj.sumFramesBlockSize;
-                npts = floor(double(length(y)) / n) * n;
-                y0 = y;
-                y = y0(1:n:npts);
-                for k = 2:n
-                    y = y + y0(k:n:npts);
+                mask3d = zeros(nrows, ncols, nframes, class(obj.mask));
+                for t = 1:nframes
+                    row0 = rowmins(t) - rowmin;
+                    col0 = colmins(t) - colmin;
+                    trows = row0:row0 + mrows - 1;
+                    tcols = col0:col0 + mcols - 1;
+                    mask3d(trows, tcols, t) = obj.mask;
                 end
             end
-        end
-        function set.data(obj, y)
-            obj.data = reshape(y, [], 1);
-        end
-        
-        function set.idealizedData(obj, y)
-            obj.idealizedData = reshape(y, [], 1);
-        end
-        
-        function y = get.perfectData(obj)
-            y = obj.perfectData;
-            if isempty(y)
-                return
+            % remove out of image bits
+            out = union(find(rows < 1), find(rows > imstack.height));
+            if ~isempty(out)
+                rows(out) = [];
+                mask3d(out,:,:) = [];
             end
-            ny = size(y, 1);
-            ndata = size(obj.data, 1);
-            if ny ~= ndata && obj.sumFramesBlockSize > 1
-                n = obj.sumFramesBlockSize;
-                npts = floor(double(ny) / n) * n;
-                if npts == ndata
-                    y0 = y;
-                    y = y0(1:n:npts);
-                    for k = 2:n
-                        y = y + y0(k:n:npts);
-                    end
-                end
+            out = union(find(cols < 1), find(cols > imstack.width));
+            if ~isempty(out)
+                cols(out) = [];
+                mask3d(:,out,:) = [];
             end
         end
-        function set.perfectData(obj, y)
-            obj.perfectData = reshape(y, [], 1);
-        end
         
-        function updateProjectionFromImageStack(obj, imstack)
+        function zproj = getZProjectionFromImageStack(obj, imstack)
             if isempty(obj.xy) || isempty(imstack.data)
                 return
             end
-            row0 = round(obj.xy(2));
-            col0 = round(obj.xy(1));
-            mask = obj.projectionMask;
-            maskNRows = size(mask,1);
-            maskNCols = size(mask,2);
-            maskRow0 = ceil(maskNRows / 2);
-            maskCol0 = ceil(maskNCols / 2);
-            rows = row0-maskRow0+1:row0+maskNRows-maskRow0;
-            cols = col0-maskCol0+1:col0+maskNCols-maskCol0;
-            out = union(find(rows < 1), find(rows > imstack.height()));
-            if ~isempty(out)
-                rows(out) = [];
-                mask(out,:) = [];
-            end
-            out = union(find(cols < 1), find(cols > imstack.width()));
-            if ~isempty(out)
-                cols(out) = [];
-                mask(:,out) = [];
-            end
-            masktot = sum(mask(:));
-            if isempty(mask) || masktot == 0
-                obj.projection.rawTime = [];
-                obj.projection.rawData = [];
+            [mask3d, rows, cols] = obj.getMaskZProjection(imstack);
+            zproj = reshape( ...
+                sum(sum( ...
+                    double(imstack.data(rows,cols,:)) .* mask3d ...
+                    , 1), 2) ./ sum(sum(mask3d, 1), 2) ...
+                , [], 1);
+        end
+        
+        function updateZProjectionFromImageStack(obj, imstack)
+            if isempty(obj.xy) || isempty(imstack) || isempty(imstack.data)
                 return
             end
-            nframes = imstack.numFrames;
-            if isempty(imstack.frameIntervalSec)
-                % frames
-                obj.time = [];
+            obj.zproj.rawTime = imstack.frameIntervalSec;
+            obj.zproj.rawData = obj.getZProjectionFromImageStack(imstack);
+            if isempty(obj.zproj.rawTime)
+                obj.zproj.timeUnits = 'frames';
             else
-                % sample interval (sec)
-                obj.time = imstack.frameIntervalSec;
+                obj.zproj.timeUnits = 'seconds';
             end
-            obj.data = reshape( ...
-                sum(sum( ...
-                    double(imstack.data(rows,cols,:)) .* repmat(mask, [1 1 nframes]) ...
-                    , 1), 2) ./ masktot ...
-                , [], 1);
-            notify(obj, 'ProjectionChanged');
+            obj.zproj.dataUnits = 'au';
         end
     end
     
     methods (Static)
         function obj = loadobj(s)
             obj = Utilities.loadobj(Spot(), s);
-        end
-        
-        function spots = getTaggedSpots(spots, tagsMask)
-            if ~exist('tagsMask', 'var') || isempty(tagsMask)
-                return
-            end
-            clip = [];
-            for k = 1:numel(spots)
-                if isempty(intersect(tagsMask, spots(k).tags))
-                    clip = [clip k];
-                end
-            end
-            spots(clip) = [];
         end
         
         function [pixelsXY, pixelIndices] = getPixelsInSpot(xy, radius, imageSize)
@@ -244,16 +230,25 @@ classdef Spot < handle
             end
         end
         
-        function [segments, segmentStartIndices] = getNonNanSegments(dataWithNan)
-            % return cell array of non-nan subarrays
-            dataWithNan = reshape(dataWithNan, [], 1);
-            idx = isnan(dataWithNan);
-            segmentLengths = diff(find([1; diff(idx); 1]));
-            segmentStartIndices = [1; cumsum(segmentLengths(1:end-1))];
-            segments = mat2cell(dataWithNan, segmentLengths(:));
-            % remove nan segments
-            segments(2:2:end) = [];
-            segmentStartIndices(2:2:end) = [];
+        function str = arr2str(arr, delim)
+            if isempty(arr)
+                str = "";
+            else
+                str = strjoin(arr, delim);
+            end
+        end
+        
+        function spots = getTaggedSpots(spots, tagsMask)
+            if ~exist('tagsMask', 'var') || isempty(tagsMask)
+                return
+            end
+            clip = [];
+            for k = 1:numel(spots)
+                if isempty(intersect(tagsMask, spots(k).tags))
+                    clip = [clip k];
+                end
+            end
+            spots(clip) = [];
         end
     end
 end
