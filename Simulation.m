@@ -3,27 +3,28 @@ classdef Simulation < handle
     %   Detailed explanation goes here
     
     methods (Static)
-        function [x, y, ideal] = simulateTimeSeries(nseries, npts, dt, model, nsites)
+        function [x, y, ideal] = simulateTimeSeries(nruns, nseries, npts, dt, model, nsites)
             if nargin < 5
                 % dialog
                 answer = inputdlg( ...
-                    {'# series', '# samples/series', 'sample interval (sec)', ...
+                    {'# runs', '# series/run', '# samples/series', 'sample interval (sec)', ...
                     'starting probabilities', 'transition rates (/sec)', ...
                     'emission means', 'emission sigmas', ...
                     '# sites/series'}, ...
                     'Simulation', 1, ...
-                    {'100', '1000', '0.1', ...
+                    {'1', '100', '1000', '0.1', ...
                     '0.5, 0.5', '0, 1; 1, 0', ...
                     '0, 1', '0.25, 0.33', ...
                     '1'});
                 if isempty(answer)
                     return
                 end
-                nseries = str2num(answer{1});
-                npts = str2num(answer{2});
-                dt = str2num(answer{3});
-                model.p0 = Simulation.str2mat(answer{4});
-                Q = Simulation.str2mat(answer{5});
+                nruns = str2num(answer{1});
+                nseries = str2num(answer{2});
+                npts = str2num(answer{3});
+                dt = str2num(answer{4});
+                model.p0 = Simulation.str2mat(answer{5});
+                Q = Simulation.str2mat(answer{6});
                 Q = Q - diag(diag(Q));
                 Q = Q - diag(sum(Q, 2));
                 nstates = size(Q, 1);
@@ -33,12 +34,12 @@ classdef Simulation < handle
                     S = [Q ones(nstates, 1)];
                     model.p0 = ones(1, nstates) / (S * (S'));        
                 end
-                mu = Simulation.str2mat(answer{6});
-                sigma = Simulation.str2mat(answer{7});
+                mu = Simulation.str2mat(answer{7});
+                sigma = Simulation.str2mat(answer{8});
                 for k = 1:nstates
                     model.pd(k) = makedist('Normal', 'mu', mu(k), 'sigma', sigma(k));
                 end
-                nsites = str2num(answer{8});
+                nsites = str2num(answer{9});
                 % model sanity
                 model.p0 = model.p0 ./ sum(model.p0);
                 model.A = model.A - diag(diag(model.A));
@@ -46,19 +47,21 @@ classdef Simulation < handle
             end
             % allocate memory
             x = reshape([0:npts-1] .* dt, [], 1);
-            y = zeros(npts, nseries, nsites);
-            ideal = zeros(npts, nseries, nsites);
+            y = zeros(npts, nseries, nsites, nruns);
+            ideal = zeros(npts, nseries, nsites, nruns);
             % states
-            states = zeros(npts, nseries, nsites, 'uint8');
+            states = zeros(npts, nseries, nsites, nruns, 'uint8');
             cump0 = cumsum(model.p0);
             cumA = cumsum(model.A, 2);
-            rn = rand(npts, nseries, nsites);
-            for i = 1:nseries
-                for j = 1:nsites
-                    t = 1;
-                    states(t,i,j) = find(rn(t,i,j) <= cump0, 1);
-                    for t = 2:npts
-                        states(t,i,j) = find(rn(t,i,j) <= cumA(states(t-1,i,j),:), 1);
+            rn = rand(npts, nseries, nsites, nruns);
+            for r = 1:nruns
+                for i = 1:nseries
+                    for j = 1:nsites
+                        t = 1;
+                        states(t,i,j,r) = find(rn(t,i,j,r) <= cump0, 1);
+                        for t = 2:npts
+                            states(t,i,j,r) = find(rn(t,i,j,r) <= cumA(states(t-1,i,j,r),:), 1);
+                        end
                     end
                 end
             end
@@ -73,6 +76,8 @@ classdef Simulation < handle
                 y = sum(y, 3);
                 ideal = sum(ideal, 3);
             end
+            y = squeeze(y);
+            ideal = squeeze(ideal);
         end
         
         function mat = str2mat(str)

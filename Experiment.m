@@ -1,6 +1,5 @@
 classdef Experiment < handle
-    %EXPERIMENT Data for an entire single-molecule imaging experiment.
-    %   Mostly just an array of channels with associated images and spots.
+    %EXPERIMENT All data for a single-molecule imaging experiment.
     %
     %	Created by Marcel Goldschen-Ohm
     %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
@@ -8,7 +7,7 @@ classdef Experiment < handle
     properties
         % DATA PROPERTIES
         
-        id = [];
+        uid = [];
         notes = '';
         
         % Row vector of channels.
@@ -19,8 +18,12 @@ classdef Experiment < handle
         % Selected spot index.
         selectedSpotIndex = [];
         
-        % generic container for model info and params
-        model = struct( ...
+        % Select only spots with any of these tags.
+        spotSelectionTagsMask = string.empty;
+        applySpotSelectionTagsMask = true;
+        
+        % Generic container for time series model info and params.
+        tsModel = struct( ...
             'name', 'DISC', ...
             'alpha', 0.05, ...
             'informationCriterion', 'BIC-GMM' ...
@@ -28,11 +31,7 @@ classdef Experiment < handle
     end
     
     events
-        IdChanged
-        NotesChanged
-        ChannelsChanged
         SelectedSpotIndexChanged
-        ModelChanged
     end
     
     methods
@@ -40,15 +39,6 @@ classdef Experiment < handle
             %EXPERIMENT Constructor.
         end
         
-        function set.id(obj, id)
-            obj.id = id;
-            notify(obj, 'IdChanged');
-        end
-        
-        function set.notes(obj, notes)
-            obj.notes = notes;
-            notify(obj, 'NotesChanged');
-        end
         function setNotes(obj, notes)
             obj.notes = notes;
         end
@@ -70,9 +60,8 @@ classdef Experiment < handle
             % Make sure each channel's parent experiment refers to obj.
             obj.channels = channels;
             for channel = channels
-                channel.Parent = obj;
+                channel.experiment = obj;
             end
-            notify(obj, 'ChannelsChanged');
         end
         
         function set.selectedSpotIndex(obj, k)
@@ -178,30 +167,47 @@ classdef Experiment < handle
             end
         end
         
-        function set.model(obj, model)
-            if isstruct(model)
-                obj.model = model;
-            else % assume model is a string or char name
-                obj.model.name = string(model);
-                obj.editModelParams();
-            end
-            notify(obj, 'ModelChanged');
-        end
-        function editModelParams(obj)
-            if ~isfield(obj.model, 'name') || isempty(obj.model.name)
+        function set.spotSelectionTagsMask(obj, tags)
+            if isempty(tags)
+                obj.spotSelectionTagsMask = string.empty;
+            elseif ischar(tags) || (isstring(tags) && numel(tags) == 1)
+                obj.spotSelectionTagsMask = Spot.str2arr(tags, ',');
+            elseif isstring(tags)
+                obj.spotSelectionTagsMask = tags;
+            else
                 return
             end
-            if obj.model.name == "DISC"
-                obj.editDiscModelParams();
+        end
+        function setSpotSelectionTagsMask(obj, tags)
+            obj.spotSelectionTagsMask = tags;
+        end
+        function str = getSpotSelectionTagsMaskString(obj)
+            str = Spot.arr2str(obj.spotSelectionTagsMask, ",");
+        end
+        function setApplySpotSelectionTagsMask(obj, tf)
+            obj.applySpotSelectionTagsMask = tf;
+        end
+        
+        function set.tsModel(obj, model)
+            if isstruct(model)
+                obj.tsModel = model;
+            else % assume model is a string or char name
+                obj.tsModel.name = string(model);
+                obj.editTsModelParams();
             end
         end
-        function editDiscModelParams(obj)
+        function editTsModelParams(obj)
+            if obj.tsModel.name == "DISC"
+                obj.editDiscTsModelParams();
+            end
+        end
+        function editDiscTsModelParams(obj)
             % default params
             newmodel.name = 'DISC';
             newmodel.alpha = 0.05;
             newmodel.informationCriterion = "BIC-GMM";
             try
-                alpha = obj.model.alpha;
+                alpha = obj.tsModel.alpha;
                 if alpha > 0 && alpha < 1
                     newmodel.alpha = alpha;
                 end
@@ -209,7 +215,7 @@ classdef Experiment < handle
             end
             ICs = ["AIC-GMM", "BIC-GMM", "BIC-RSS", "HQC-GMM", "MDL"];
             try
-                IC = string(obj.model.informationCriterion);
+                IC = string(obj.tsModel.informationCriterion);
                 if any(ICs == IC)
                     newmodel.informationCriterion = IC;
                 end
@@ -253,7 +259,7 @@ classdef Experiment < handle
                 newmodel.informationCriterion = string(s.String{s.Value});
             end
             function ok_(varargin)
-                obj.model = newmodel;
+                obj.tsModel = newmodel;
                 % close dialog
                 delete(dlg);
             end

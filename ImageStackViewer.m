@@ -8,7 +8,7 @@ classdef ImageStackViewer < handle
     
     properties
         % ImageStack handle ref to image stack data.
-        imageStack = ImageStack;
+        imageStack = ImageStack.empty;
         
         % Bounding box in which to arrange items within Parent.
         % [] => fill Parent container.
@@ -35,6 +35,15 @@ classdef ImageStackViewer < handle
         % Optional list of buttons displayed to the right of infoText.
         rightHeaderButtons = gobjects(0);
         
+        % Zoom to show full image button.
+        zoomOutButton = gobjects(0);
+        
+        % Brightness/Contrast button.
+        brightnessContrastButton = gobjects(0);
+        
+        % Auto adjust brightness/contrast for each frame?
+        isAutoContrast = true;
+        
         % Optional toolbar panel displayed above infoText.
         toolbarPanel = gobjects(0);
     end
@@ -44,6 +53,7 @@ classdef ImageStackViewer < handle
         % Access via updateResizeListener() and removeResizeListener().
         resizeListener = event.listener.empty;
         
+        % other listeners
         labelChangedListener = event.listener.empty;
         dataChangedListener = event.listener.empty;
     end
@@ -84,7 +94,7 @@ classdef ImageStackViewer < handle
             obj.imageAxes.Toolbar.Visible = 'off';
             box(obj.imageAxes, 'on');
             hold(obj.imageAxes, 'on');
-            obj.imageFrame = image(obj.imageAxes, [], ...
+            obj.imageFrame = imagesc(obj.imageAxes, [], ...
                 'HitTest', 'off', ...
                 'PickableParts', 'none');
             axis(obj.imageAxes, 'image');
@@ -95,12 +105,24 @@ classdef ImageStackViewer < handle
             obj.frameSlider = uicontrol(parent, 'Style', 'slider', ...
                 'Min', 1, 'Max', 1, 'Value', 1, ...
                 'SliderStep', [1 1], ... % [1/nframes 1/nframes]
-                'Units', 'pixels');
+                'Units', 'pixels', ...
+                'Visible', 'off');
             addlistener(obj.frameSlider, 'Value', 'PostSet', @(varargin) obj.frameSliderMoved());
             
             % info text
             obj.infoText = uicontrol(parent, 'Style', 'text', ...
                 'HorizontalAlignment', 'left');
+            
+            % buttons
+            obj.zoomOutButton = uicontrol(parent, 'style', 'pushbutton', ...
+                'String', char(hex2dec('2922')), 'Position', [0 0 15 15], ...
+                'Tooltip', 'Show Full Image', ...
+                'Callback', @(varargin) obj.zoomOutFullImage());
+            obj.brightnessContrastButton = uicontrol(parent, 'style', 'pushbutton', ...
+                'String', char(hex2dec('25d0')), 'Position', [0 0 15 15], ...
+                'Tooltip', 'Brightness/Contrast', ...
+                'Callback', @(varargin) obj.brightnessContrastButtonDown());
+            obj.rightHeaderButtons = [obj.brightnessContrastButton obj.zoomOutButton];
             
             obj.resize();
             obj.updateResizeListener();
@@ -207,7 +229,7 @@ classdef ImageStackViewer < handle
             end
             % Set handle to the displayed image stack. This updates
             % everything including the displayed image and frame slider.
-            zoomOut = isempty(obj.imageStack.data) || ~obj.isZoomed();
+            zoomOut = isempty(obj.imageStack) || isempty(obj.imageStack.data) || ~obj.isZoomed();
             obj.imageStack = imageStack;
             nframes = obj.imageStack.numFrames;
             if nframes > 1
@@ -282,7 +304,11 @@ classdef ImageStackViewer < handle
             pos = ImageStackViewer.plotboxpos(obj.imageAxes);
             
             % Position all other graphics objects around the image axes.
+            
+            % frame slider
             obj.frameSlider.Position = [pos(1) pos(2)-margin-15 pos(3) 15];
+            
+            % header info text and left and right header buttons
             wl = 0;
             wr = 0;
             if ~isempty(obj.leftHeaderButtons)
@@ -305,11 +331,14 @@ classdef ImageStackViewer < handle
             end
             if wr
                 bx = pos(1) + pos(3) - wr + margin;
+                by = pos(2) + pos(4) + margin;
                 for btn = obj.rightHeaderButtons
                     btn.Position = [bx by btn.Position(3) 15];
                     bx = bx + btn.Position(3);
                 end
             end
+            
+            % toolbar above header
             if isgraphics(obj.toolbarPanel)
                 obj.toolbarPanel.Position = [pos(1) pos(2)+pos(4)+margin+15 pos(3) 15];
             end
@@ -347,13 +376,22 @@ classdef ImageStackViewer < handle
             if ~exist('t', 'var') || isempty(t)
                 t = obj.imageStack.selectedFrameIndex;
             end
-            frame = obj.imageStack.getFrame(t);
+            try
+                frame = obj.imageStack.getFrame(t);
+            catch
+                frame = [];
+            end
             if isempty(frame)
                 obj.imageFrame.CData = [];
                 obj.imageFrame.XData = [];
                 obj.imageFrame.YData = [];
             else
-                obj.imageFrame.CData = imadjust(uint16(frame));
+                if obj.isAutoContrast
+                    obj.imageAxes.CLim = [0 2^16-1];
+                    obj.imageFrame.CData = imadjust(uint16(frame));
+                else
+                    obj.imageFrame.CData = frame;
+                end
                 obj.imageFrame.XData = [1 size(frame, 2)];
                 obj.imageFrame.YData = [1 size(frame, 1)];
                 if obj.imageStack.numFrames > 1
@@ -380,9 +418,9 @@ classdef ImageStackViewer < handle
                 else
                     obj.infoText.String = sprintf('(%dx%d)', w, h);
                 end
-                if ~isempty(obj.imageStack.label)
-                    obj.infoText.String = [obj.infoText.String ' ' char(obj.imageStack.label)];
-                end
+            end
+            if ~isempty(obj.imageStack.label)
+                obj.infoText.String = [obj.infoText.String ' ' char(obj.imageStack.label)];
             end
         end
         
@@ -399,6 +437,32 @@ classdef ImageStackViewer < handle
                 obj.imageAxes.XLim = [0.5, obj.imageFrame.XData(end)+0.5];
                 obj.imageAxes.YLim = [0.5, obj.imageFrame.YData(end)+0.5];
             end
+        end
+        
+        function brightnessContrastButtonDown(obj)
+            menu = uicontextmenu;
+            uimenu(menu, 'Label', 'Auto', ...
+                'Checked', obj.isAutoContrast, ...
+                'Callback', @(varargin) obj.toggleAutoContrast());
+            uimenu(menu, 'Label', ['Set (' num2str(obj.imageAxes.CLim) ')'], ...
+                'Separator', 'on', ...
+                'Callback', @(varargin) obj.editBrightnessContrast());
+            
+            fig = ancestor(obj.Parent, 'Figure');
+            menu.Parent = fig;
+            menu.Position(1:2) = obj.brightnessContrastButton.Position(1:2);
+            menu.Visible = 1;
+        end
+        
+        function toggleAutoContrast(obj)
+            obj.isAutoContrast = ~obj.isAutoContrast;
+            obj.showFrame();
+        end
+        
+        function editBrightnessContrast(obj)
+            obj.isAutoContrast = false;
+            obj.showFrame();
+            htool = imcontrast(obj.imageFrame);
         end
         
         function imageAxesButtonDown(obj, src, event)

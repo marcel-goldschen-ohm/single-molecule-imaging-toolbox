@@ -46,7 +46,9 @@ classdef Channel < handle
         overlayColorChannels = [2 1 2]; % green-magenta
         
         % Spot time series options.
-        sumFramesBlockSize = 1; % e.g. simulate longer exposures
+        spotTsSumEveryN = 1; % e.g. simulate longer exposures
+        spotTsFilter = digitalFilter.empty;
+        spotTsApplyFilter = false;
     end
     
     properties (Dependent)
@@ -66,7 +68,6 @@ classdef Channel < handle
         SelectedSpotChanged
         SelectedProjectionImageStackChanged
         OverlayChannelChanged
-%         SpotProjectionChanged
     end
     
     methods
@@ -108,9 +109,15 @@ classdef Channel < handle
         function set.images(obj, images)
             obj.images = images;
             notify(obj, 'ImagesChanged');
-            % resetting these makes sure they remain valid
-            obj.selectedImage = obj.selectedImage;
-            obj.selectedProjectionImageStack = obj.selectedProjectionImageStack;
+            if isempty(obj.selectedImage) && ~isempty(obj.images)
+                obj.selectedImage = obj.images(1);
+            end
+            if isempty(obj.selectedProjectionImageStack) && ~isempty(obj.images)
+                obj.selectFirstValidProjectionImageStack();
+            end
+%             % resetting these makes sure they remain valid
+%             obj.selectedImage = obj.selectedImage;
+%             obj.selectedProjectionImageStack = obj.selectedProjectionImageStack;
         end
         
         function set.spots(obj, spots)
@@ -120,34 +127,6 @@ classdef Channel < handle
             end
             notify(obj, 'SpotsChanged');
         end
-        
-        % TODO: move this elsewhere
-%         function setSpotProjections(obj, x, y)
-%             % x = [] => frames
-%             % x = dt => sample interval (sec)
-%             % x = [Nx1] => time samples (sec)
-%             % x = [NxM] => columns are time samples (sec) for M spots
-%             % y = [NxM] => columns are projections for M spots
-%             nproj = size(y, 2);
-%             spots = obj.spots;
-%             if numel(spots) ~= nproj
-%                 spots = Spot.empty(0,1);
-%                 for k = 1:nproj
-%                     spots(k,1) = Spot;
-%                 end
-%             end
-%             for k = 1:nproj
-%                 if isequal(size(x), size(y))
-%                     spots(k).time = x(:,k);
-%                 else
-%                     spots(k).time = x;
-%                 end
-%                 spots(k).data = y(:,k);
-%             end
-%             if numel(obj.spots) ~= nproj
-%                 obj.spots = spots;
-%             end
-%         end
         
         function set.alignedToChannel(obj, channel)
             obj.alignedToChannel = channel;
@@ -159,25 +138,28 @@ classdef Channel < handle
         end
         
         function set.selectedImage(obj, h)
-            if isempty(h)
-                obj.selectedImage = ImageStack.empty;
-                obj.updateOverlayInOtherChannels();
-                notify(obj, 'SelectedImageChanged');
-            elseif ~isempty(obj.images) && any(obj.images == h)
-                % h is in obj.images
-                obj.selectedImage = h;
-                obj.updateOverlayInOtherChannels();
-                notify(obj, 'SelectedImageChanged');
-            else
-                % h is NOT in obj.images
-                % If the current selected image is valid, leave it alone.
-                % Otherwise, clear it.
-                if ~isempty(obj.selectedImage) && ~any(obj.images == obj.selectedImage)
-                    obj.selectedImage = ImageStack.empty;
-                    obj.updateOverlayInOtherChannels();
-                    notify(obj, 'SelectedImageChanged');
-                end
-            end
+            obj.selectedImage = h;
+            obj.updateOverlayInOtherChannels();
+            notify(obj, 'SelectedImageChanged');
+%             if isempty(h)
+%                 obj.selectedImage = ImageStack.empty;
+%                 obj.updateOverlayInOtherChannels();
+%                 notify(obj, 'SelectedImageChanged');
+%             elseif ~isempty(obj.images) && any(obj.images == h)
+%                 % h is in obj.images
+%                 obj.selectedImage = h;
+%                 obj.updateOverlayInOtherChannels();
+%                 notify(obj, 'SelectedImageChanged');
+%             else
+%                 % h is NOT in obj.images
+%                 % If the current selected image is valid, leave it alone.
+%                 % Otherwise, clear it.
+%                 if ~isempty(obj.selectedImage) && ~any(obj.images == obj.selectedImage)
+%                     obj.selectedImage = ImageStack.empty;
+%                     obj.updateOverlayInOtherChannels();
+%                     notify(obj, 'SelectedImageChanged');
+%                 end
+%             end
         end
         function setSelectedImage(obj, h)
             % because setters are not valid callbacks
@@ -200,6 +182,9 @@ classdef Channel < handle
                 end
             end
             obj.selectedSpot = selectedSpot;
+            if ~isempty(obj.selectedSpot)
+                obj.selectedSpot.channel = obj;
+            end
             notify(obj, 'SelectedSpotChanged');
         end
         
@@ -241,21 +226,23 @@ classdef Channel < handle
         end
         
         function set.selectedProjectionImageStack(obj, h)
-            if isempty(h)
-                obj.selectedProjectionImageStack = ImageStack.empty;
-                notify(obj, 'SelectedProjectionImageStackChanged');
-            elseif ~isempty(obj.images) && any(obj.images == h)
-                % h is in obj.images
-                obj.selectedProjectionImageStack = h;
-                notify(obj, 'SelectedProjectionImageStackChanged');
-            else
-                % h is NOT in obj.images
-                % If the current selected image is valid, leave it alone.
-                % Otherwise, select the first image stack.
-                if isempty(obj.selectedProjectionImageStack) || ~any(obj.images == obj.selectedProjectionImageStack)
-                    obj.selectFirstValidProjectionImageStack();
-                end
-            end
+            obj.selectedProjectionImageStack = h;
+            notify(obj, 'SelectedProjectionImageStackChanged');
+%             if isempty(h)
+%                 obj.selectedProjectionImageStack = ImageStack.empty;
+%                 notify(obj, 'SelectedProjectionImageStackChanged');
+%             elseif ~isempty(obj.images) && any(obj.images == h)
+%                 % h is in obj.images
+%                 obj.selectedProjectionImageStack = h;
+%                 notify(obj, 'SelectedProjectionImageStackChanged');
+%             else
+%                 % h is NOT in obj.images
+%                 % If the current selected image is valid, leave it alone.
+%                 % Otherwise, select the first image stack.
+%                 if isempty(obj.selectedProjectionImageStack) || ~any(obj.images == obj.selectedProjectionImageStack)
+%                     obj.selectFirstValidProjectionImageStack();
+%                 end
+%             end
         end
         function setSelectedProjectionImageStack(obj, h)
             % because setters are not valid callbacks
@@ -329,8 +316,8 @@ classdef Channel < handle
         
         function channels = getOtherChannels(obj)
             channels = Channel.empty(1,0);
-            if ~isempty(obj.Parent) && isvalid(obj.Parent)
-                channels = setdiff(obj.Parent.channels, obj);
+            if ~isempty(obj.experiment) && isvalid(obj.experiment)
+                channels = setdiff(obj.experiment.channels, obj);
             end
         end
         
@@ -734,7 +721,7 @@ classdef Channel < handle
             obj.copyMappedSpotsToOtherChannels(obj.getOtherChannels());
         end
         
-        function setSpotsSampleInterval(obj, dt)
+        function setSpotTsSampleInterval(obj, dt)
             if ~exist('dt', 'var')
                 answer = inputdlg({'Sample Interval (sec):'}, 'Sample Interval', 1, {''});
                 if isempty(answer)
@@ -746,210 +733,65 @@ classdef Channel < handle
                 obj.selectedProjectionImageStack.frameIntervalSec = dt;
             end
             spots = union(obj.spots, obj.selectedSpot);
-            if ~isempty(spots)
-                [spots.rawTime] = deal(dt);
-                [spots.time] = deal(dt) * obj.sumFramesBlockSize;
+            for k = 1:numel(spots)
+                spots(k).tsData.rawTime = dt;
+                if isempty(dt)
+                    spots(k).tsData.timeUnits = 'frames';
+                else
+                    spots(k).tsData.timeUnits = 'seconds';
+                end
             end
             if ~isempty(obj.selectedSpot)
                 notify(obj, 'SelectedSpotChanged');
             end
         end
         
-        function set.sumFramesBlockSize(obj, n)
-            obj.sumFramesBlockSize = n;
-            % ONLY update current spot! Other spots will need to be updated
-            % manually.
+        function set.spotTsSumEveryN(obj, N)
+            obj.spotTsSumEveryN = N;
             if ~isempty(obj.selectedSpot)
-                obj.updateTimeSeries(obj.selectedSpot);
+                notify(obj, 'SelectedSpotChanged');
             end
         end
-        function editSumFramesBlockSize(obj)
+        function editSpotTsSumEveryN(obj)
             answer = inputdlg({'Sum blocks of N frames:'}, ...
-                'Sum Frames', 1, {num2str(obj.sumFramesBlockSize)});
+                'Sum Frames', 1, {num2str(obj.spotTsSumEveryN)});
             if isempty(answer)
                 return
             end
-            obj.sumFramesBlockSize = str2num(answer{1});
+            obj.spotTsSumEveryN = str2num(answer{1});
         end
         
-        function updateTimeSeries(obj, spots)
-            if ~exist('spots', 'var')
-                spots = union(obj.spots, obj.selectedSpot);
-            end
-            if isempty(spots)
-                return
-            end
-            for k = 1:numel(spots)
-                % attempt to update raw data from image stack if possible
-                if ~isempty(obj.selectedProjectionImageStack)
-                    spots(k).updateRawDataFromImageStack(obj.selectedProjectionImageStack);
-                end
-                % update data from raw data as needed
-                if obj.sumFramesBlockSize > 1
-                    spots(k).sumRawDataFrameBlocks(obj.sumFramesBlockSize);
-                end
-                % ...
-            end
-            if ~isempty(obj.selectedSpot) && any(spots == obj.selectedSpot)
+        function set.spotTsFilter(obj, filt)
+            obj.spotTsFilter = filt;
+            if ~isempty(obj.selectedSpot)
                 notify(obj, 'SelectedSpotChanged');
             end
         end
+        function editSpotTsDigitalFilter(obj)
+            % launch MATLAB's digital filter designer
+            % when complete this will put the designed digitalFilter object
+            % in the base workspace ans variable
+            designfilt();
+            try
+                %evalin('base', 'whos')
+                filt = evalin('base', 'ans');
+                %class(filt)
+                if class(filt) == "digitalFilter"
+                    obj.spotTsFilter = filt;
+                end
+            catch
+            end
+        end
         
-        
-        % TODO: ???
-        
-%         function clearSpotProjections(obj, spots)
-%             if ~exist('spots', 'var')
-%                 spots = obj.spots;
-%             end
-%             if isempty(spots)
-%                 return
-%             end
-%             for k = 1:numel(spots)
-%                 spots(k).time = [];
-%                 spots(k).data = [];
-%             end
-%             notify(obj, 'SpotsChanged');
-%             if ~isempty(obj.selectedSpot) && any(spots == obj.selectedSpot)
-%                 notify(obj, 'SelectedSpotChanged');
-%             end
-%         end
-%         function askToClearAllSpotProjections(obj)
-%             if isempty(obj.spots)
-%                 return
-%             end
-%             if questdlg('Clear all spot projections?', 'Clear Projections?') ~= "Yes"
-%                 return
-%             end
-%             obj.clearSpotProjections(obj.spots);
-%         end
-%         
-%         function updateSpotProjections(obj, spots)
-%             if isempty(obj.selectedProjectionImageStack) || isempty(obj.selectedProjectionImageStack.data)
-%                 return
-%             end
-%             if ~exist('spots', 'var')
-%                 spots = obj.spots;
-%             end
-%             if isempty(spots)
-%                 return
-%             end
-%             for k = 1:numel(spots)
-%                 spots(k).updateProjectionFromImageStack(obj.selectedProjectionImageStack);
-%             end
-%             notify(obj, 'SpotsChanged');
-%             if ~isempty(obj.selectedSpot) && any(spots == obj.selectedSpot)
-%                 notify(obj, 'SelectedSpotChanged');
-%             end
-%         end
-        
-%         function clearSpotProjectionIdealizations(obj, spots)
-%             if ~exist('spots', 'var')
-%                 spots = obj.spots;
-%             end
-%             if isempty(spots)
-%                 return
-%             end
-%             for k = 1:numel(spots)
-%                 spots(k).projection.idealizedData = [];
-%             end
-%         end
-%         
-%         function idealizeSpotProjections(obj, spots)
-%             if ~exist('spots', 'var')
-%                 spots = obj.spots;
-%             end
-%             if isempty(spots)
-%                 return
-%             end
-%             for k = 1:numel(spots)
-%                 spots(k).projection.idealize(obj.spotProjectionIdealizationMethod, obj.spotProjectionIdealizationParams);
-%             end
-%         end
-%         
-%         function clearAllSpotProjections(obj, ask)
-%             if exist('ask', 'var') && ask
-%                 if questdlg('Clear all spot projections?', 'Clear Projections?') ~= "Yes"
-%                     return
-%                 end
-%             end
-%             if ~isempty(obj.spots)
-%                 obj.clearSpotProjections(obj.spots);
-%                 notify(obj, 'SpotsChanged');
-%             end
-%             if ~isempty(obj.selectedSpot)
-%                 obj.selectedSpot.projection.clear();
-%                 notify(obj, 'SelectedSpotChanged');
-%             end
-%         end
-%         
-%         function clearAllSpotProjectionIdealizations(obj, ask)
-%             if exist('ask', 'var') && ask
-%                 if questdlg('Clear all spot projeciton idealizations?', 'Clear Idealizations?') ~= "Yes"
-%                     return
-%                 end
-%             end
-%             if ~isempty(obj.spots)
-%                 obj.clearSpotProjectionIdealizations(obj.spots);
-%                 notify(obj, 'SpotsChanged');
-%             end
-%             if ~isempty(obj.selectedSpot)
-%                 obj.selectedSpot.projection.idealizedData = [];
-%                 notify(obj, 'SelectedSpotChanged');
-%             end
-%         end
-%         
-%         function idealizeSelectedSpotProjection(obj)
-%             if ~isempty(obj.selectedSpot)
-%                 obj.idealizeSpotProjections(obj.selectedSpot);
-%                 notify(obj, 'SelectedSpotChanged');
-%             end
-%         end
-%         
-%         function idealizeAllSpotProjections(obj, tagsMask, ask)
-%             if isempty(obj.spots)
-%                 return
-%             end
-%             if exist('ask', 'var') && ask
-%                 if questdlg('Idealize all spots?', 'Idealize All Spots?') ~= "Yes"
-%                     return
-%                 end
-%             end
-%             if ~exist('tagsMask', 'var') || isempty(tagsMask)
-%                 obj.idealizeSpotProjections(obj.spots);
-%             else
-%                 spots = obj.spots;
-%                 clip = [];
-%                 for k = 1:numel(spots)
-%                     if isempty(intersect(tagsMask, spots(k).tags))
-%                         clip = [clip k];
-%                     end
-%                 end
-%                 spots(clip) = [];
-%                 obj.idealizeSpotProjections(spots);
-%             end
-%             notify(obj, 'SpotsChanged');
-%             if any(obj.spots == obj.selectedSpot)
-%                 notify(obj, 'SelectedSpotChanged');
-%             end
-%         end
-        
-%         function simulateSpotProjections(obj)
-%             disp('Simulating spot projections...');
-%             wb = waitbar(0, 'Simulating spot projection time series...');
-%             try
-%                 [x, y, ideal] = Simulation.simulateTimeSeries();
-%                 obj.setSpotProjections(x, y);
-%                 for k = 1:numel(obj.spots)
-%                     obj.spots(k).projection.trueData = ideal(:,k);
-%                 end
-%                 disp('... Done.');
-%                 notify(obj, 'SpotsChanged');
-%             catch err
-%                 disp(['... Aborted: ' err.message]);
-%             end
-%             close(wb);
-%         end
+        function toggleSpotTsApplyFilter(obj)
+            obj.spotTsApplyFilter = ~obj.spotTsApplyFilter;
+            if ~isempty(obj.selectedSpot)
+                notify(obj, 'SelectedSpotChanged');
+            end
+            if isempty(obj.spotTsFilter)
+                warndlg('No filter has been set for this channel.', 'No Filter');
+            end
+        end
     end
     
     methods (Static)

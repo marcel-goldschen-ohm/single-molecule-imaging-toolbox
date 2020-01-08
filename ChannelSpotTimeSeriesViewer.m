@@ -1,5 +1,5 @@
-classdef ChannelSpotProjectionViewer < handle
-    %CHANNELSPOTPROJECTIONVIEWER Summary of this class goes here
+classdef ChannelSpotTimeSeriesViewer < handle
+    %CHANNELSPOTTIMESERIESVIEWER Summary of this class goes here
     %   Detailed explanation goes here
     
     properties
@@ -22,6 +22,7 @@ classdef ChannelSpotProjectionViewer < handle
         menuButton = gobjects(0);
         autoscaleButton = gobjects(0);
         showIdealizationBtn = gobjects(0);
+        filterBtn = gobjects(0);
         
         numBinsText = gobjects(0);
         numBinsEdit = gobjects(0);
@@ -33,6 +34,7 @@ classdef ChannelSpotProjectionViewer < handle
         channelLabelChangedListener = event.listener.empty;
         selectedSpotChangedListener = event.listener.empty;
         selectedProjectionImageStackChangedListener = event.listener.empty;
+        selectedProjectionImageStackLabelChangedListener = event.listener.empty;
     end
     
     properties (Dependent)
@@ -44,8 +46,8 @@ classdef ChannelSpotProjectionViewer < handle
     end
     
     methods
-        function obj = ChannelSpotProjectionViewer(parent)
-            %CHANNELTIMESERIESVIEWER Construct an instance of this class
+        function obj = ChannelSpotTimeSeriesViewer(parent)
+            %CHANNELSPOTTIMESERIESVIEWER Construct an instance of this class
             %   Detailed explanation goes here
             
             % requires a parent graphics object
@@ -101,6 +103,11 @@ classdef ChannelSpotProjectionViewer < handle
                 'Tooltip', 'Show Idealization', ...
                 'Value', 1, ...
                 'Callback', @(varargin) obj.updateTimeSeries());
+            obj.filterBtn = uicontrol(parent, 'style', 'togglebutton', ...
+                'String', char(hex2dec('2a0d')), 'Position', [0 0 15 15], ...
+                'Tooltip', 'Apply Filter', ...
+                'Value', 1, ...
+                'Callback', @(varargin) obj.updateTimeSeries());
             
             obj.numBinsText = uicontrol(parent, 'style', 'text', ...
                 'String', 'bins', ...
@@ -133,6 +140,7 @@ classdef ChannelSpotProjectionViewer < handle
                 obj.menuButton ...
                 obj.autoscaleButton ...
                 obj.showIdealizationBtn ...
+                obj.filterBtn ...
                 obj.numBinsText ...
                 obj.numBinsEdit ...
                 obj.sqrtCountsBtn ...
@@ -153,6 +161,10 @@ classdef ChannelSpotProjectionViewer < handle
                 delete(obj.selectedProjectionImageStackChangedListener);
                 obj.selectedProjectionImageStackChangedListener = event.listener.empty;
             end
+            if isvalid(obj.selectedProjectionImageStackLabelChangedListener)
+                delete(obj.selectedProjectionImageStackLabelChangedListener);
+                obj.selectedProjectionImageStackLabelChangedListener = event.listener.empty;
+            end
         end
         
         function updateListeners(obj)
@@ -169,12 +181,19 @@ classdef ChannelSpotProjectionViewer < handle
             obj.selectedProjectionImageStackChangedListener = ...
                 addlistener(obj.channel, 'SelectedProjectionImageStackChanged', ...
                 @(varargin) obj.onSelectedProjectionImageStackChanged());
+            if ~isempty(obj.channel.selectedProjectionImageStack)
+                obj.selectedProjectionImageStackLabelChangedListener = ...
+                    addlistener(obj.channel.selectedProjectionImageStack, 'LabelChanged', ...
+                    @(varargin) obj.updateInfoText());
+            end
         end
         
         function set.channel(obj, channel)
             % set handle to channel and update displayed plot
             obj.channel = channel;
             obj.dataAxes.YLabel.String = channel.label;
+            obj.filterBtn.Value = obj.channel.spotTsApplyFilter;
+            obj.filterBtn.Callback = @(varargin) obj.channel.toggleSpotTsApplyFilter();
             
             % default projeciton image stack
             if isempty(channel.selectedProjectionImageStack)
@@ -187,105 +206,6 @@ classdef ChannelSpotProjectionViewer < handle
             
             % update listeners
             obj.updateListeners();
-        end
-        
-        function onChannelLabelChanged(obj)
-            obj.dataAxes.YLabel.String = obj.channel.label;
-            obj.resize();
-        end
-        
-        function updateProjection(obj)
-            spot = obj.channel.selectedSpot;
-            if ~isempty(spot)
-                obj.channel.updateTimeSeries(spot);
-                x = spot.timeArray;
-                y = spot.data;
-                if ~isempty(y)
-                    obj.dataLine.XData = x;
-                    obj.dataLine.YData = y;
-                    obj.autoscale();
-                    % ideal
-                    if obj.showIdealizationBtn.Value
-                        ideal = spot.idealData;
-                        if isequal(size(y), size(ideal))
-                            obj.idealLine.XData = x;
-                            obj.idealLine.YData = ideal;
-                        else
-                            obj.idealLine.XData = nan;
-                            obj.idealLine.YData = nan;
-                        end
-                    else
-                        obj.idealLine.XData = nan;
-                        obj.idealLine.YData = nan;
-                    end
-                    % histogram
-                    nbins = str2num(obj.numBinsEdit.String);
-                    limits = obj.dataAxes.YLim;
-                    edges = linspace(limits(1), limits(2), nbins + 1);
-                    centers = (edges(1:end-1) + edges(2:end)) / 2;
-                    counts = histcounts(y, edges);
-                    area = trapz(centers, counts);
-                    sqrtCounts = obj.sqrtCountsBtn.Value;
-                    if sqrtCounts
-                        counts = sqrt(counts);
-                    end
-                    obj.histBar.XData = centers;
-                    obj.histBar.YData = counts;
-                    if any(isnan(obj.idealLine.YData)) || isempty(obj.idealLine.YData)
-                        obj.histIdealLines.XData = nan;
-                        obj.histIdealLines.YData = nan;
-                    else
-                        if numel(centers) < 100
-                            bins = reshape(linspace(edges(1), edges(end), 101), [] ,1);
-                        else
-                            bins = reshape(centers, [], 1);
-                        end
-                        ustates = unique(obj.idealLine.YData);
-                        nustates = numel(ustates);
-                        fits = zeros(numel(bins), nustates);
-                        npts = numel(obj.idealLine.YData);
-                        for k = 1:nustates
-                            idx = find(obj.idealLine.YData == ustates(k));
-                            [mu, sigma] = normfit(obj.dataLine.YData(idx));
-                            weight = double(numel(idx)) / npts * area;
-                            fits(:,k) = weight .* normpdf(bins, mu, sigma);
-                        end
-                        if sqrtCounts
-                            fits = sqrt(fits);
-                        end
-                        bins = repmat(bins, 1, nustates);
-                        if isgraphics(obj.histIdealLines)
-                            delete(obj.histIdealLines);
-                        end
-                        obj.histIdealLines = plot(obj.histAxes, fits, bins, '-', ...
-                            'LineWidth', 1.5, ...
-                            'HitTest', 'off', 'PickableParts', 'none');
-                    end
-                    return
-                end
-            end
-            obj.dataLine.XData = nan;
-            obj.dataLine.YData = nan;
-            obj.idealLine.XData = nan;
-            obj.idealLine.YData = nan;
-            obj.histBar.XData = nan;
-            obj.histBar.YData = nan;
-            obj.histIdealLines.XData = nan;
-            obj.histIdealLines.YData = nan;
-        end
-        
-        function onSelectedProjectionImageStackChanged(obj)
-            obj.updateInfoText();
-            obj.updateTimeSeries();
-        end
-        
-        function updateInfoText(obj)
-            imstack = obj.channel.selectedProjectionImageStack;
-            if isempty(imstack)
-                obj.infoText.String = '';
-            else
-                obj.infoText.String = imstack.getLabelWithInfo();
-            end
         end
         
         function parent = get.Parent(obj)
@@ -368,10 +288,11 @@ classdef ChannelSpotProjectionViewer < handle
 %             end
             obj.dataAxes.Position = [x+tw y+20 w-tw-100-margin max(1,h-35-margin)];
             obj.histAxes.Position = [x+w-100 y+20 100 max(1,h-35-margin)];
-            pos = ChannelSpotProjectionViewer.plotboxpos(obj.dataAxes);
+            pos = ChannelSpotTimeSeriesViewer.plotboxpos(obj.dataAxes);
             
-            obj.infoText.Position = [pos(1)+45+margin pos(2)+pos(4)+margin pos(3)-75-2*margin 15];
+            obj.infoText.Position = [pos(1)+45+margin pos(2)+pos(4)+margin pos(3)-2*margin-90 15];
             obj.menuButton.Position = [pos(1)+30 pos(2)+pos(4)+margin 15 15];
+            obj.filterBtn.Position = [x+w-100-margin-45 y+h-15 15 15];
             obj.showIdealizationBtn.Position = [x+w-100-margin-30 y+h-15 15 15];
             obj.autoscaleButton.Position = [x+w-100-margin-15 y+h-15 15 15];
             
@@ -394,6 +315,121 @@ classdef ChannelSpotProjectionViewer < handle
                 delete(obj.resizeListener);
             end
             obj.resizeListener = event.listener.empty;
+        end
+        
+        function onChannelLabelChanged(obj)
+            obj.dataAxes.YLabel.String = obj.channel.label;
+            obj.resize();
+        end
+        
+        function onSelectedProjectionImageStackChanged(obj)
+            obj.updateInfoText();
+            obj.updateTimeSeries();
+            obj.updateListeners();
+        end
+        
+        function updateInfoText(obj)
+            imstack = obj.channel.selectedProjectionImageStack;
+            if isempty(imstack)
+                str = 'tsData';
+            else
+                str = imstack.getLabelWithInfo();
+            end
+%             spot = obj.channel.selectedSpot;
+%             spot.tsData.rawTime
+%             if ~isempty(spot) && numel(spot.tsData.rawTime) == 1 && spot.tsData.timeUnits == "seconds"
+%                 k = strfind(str, '@');
+%                 if ~isempty(k)
+%                     str = str(1:k-1);
+%                 end
+%                 str = sprintf('%s@%.1fHz', str, 1.0 / spot.tsData.rawTime);
+%             end
+            obj.infoText.String = str;
+        end
+        
+        function updateTimeSeries(obj)
+            obj.updateInfoText();
+            spot = obj.channel.selectedSpot;
+            if ~isempty(spot)
+                spot.updateZProjectionFromImageStack();
+                [x, y, isMasked] = spot.getTimeSeriesData();
+                if ~isempty(y)
+                    obj.dataLine.XData = x;
+                    obj.dataLine.YData = y;
+                    obj.autoscaleY();
+                    obj.histAxes.XLabel.String = [char(hex2dec('2190')) ' ' char(spot.tsData.timeUnits)];
+                    % ideal
+                    if obj.showIdealizationBtn.Value
+                        try
+                            ideal = spot.tsModel.idealData;
+                        catch
+                            ideal = [];
+                        end
+                        if isequal(size(y), size(ideal))
+                            obj.idealLine.XData = x;
+                            obj.idealLine.YData = ideal;
+                        else
+                            obj.idealLine.XData = nan;
+                            obj.idealLine.YData = nan;
+                        end
+                    else
+                        obj.idealLine.XData = nan;
+                        obj.idealLine.YData = nan;
+                    end
+                    % histogram
+                    nbins = str2num(obj.numBinsEdit.String);
+                    limits = obj.dataAxes.YLim;
+                    edges = linspace(limits(1), limits(2), nbins + 1);
+                    centers = (edges(1:end-1) + edges(2:end)) / 2;
+                    counts = histcounts(y, edges);
+                    area = trapz(centers, counts);
+                    sqrtCounts = obj.sqrtCountsBtn.Value;
+                    if sqrtCounts
+                        counts = sqrt(counts);
+                    end
+                    obj.histBar.XData = centers;
+                    obj.histBar.YData = counts;
+                    if any(isnan(obj.idealLine.YData)) || isempty(obj.idealLine.YData)
+                        [obj.histIdealLines.XData] = deal(nan);
+                        [obj.histIdealLines.YData] = deal(nan);
+                    else
+                        if numel(centers) < 100
+                            bins = reshape(linspace(edges(1), edges(end), 101), [] ,1);
+                        else
+                            bins = reshape(centers, [], 1);
+                        end
+                        ustates = unique(obj.idealLine.YData);
+                        nustates = numel(ustates);
+                        fits = zeros(numel(bins), nustates);
+                        npts = numel(obj.idealLine.YData);
+                        for k = 1:nustates
+                            idx = find(obj.idealLine.YData == ustates(k));
+                            [mu, sigma] = normfit(obj.dataLine.YData(idx));
+                            weight = double(numel(idx)) / npts * area;
+                            fits(:,k) = weight .* normpdf(bins, mu, sigma);
+                        end
+                        if sqrtCounts
+                            fits = sqrt(fits);
+                        end
+                        bins = repmat(bins, 1, nustates);
+                        if isgraphics(obj.histIdealLines)
+                            delete(obj.histIdealLines);
+                        end
+                        obj.histIdealLines = plot(obj.histAxes, fits, bins, '-', ...
+                            'LineWidth', 1.5, ...
+                            'HitTest', 'off', 'PickableParts', 'none');
+                    end
+                    return
+                end
+            end
+            obj.dataLine.XData = nan;
+            obj.dataLine.YData = nan;
+            obj.idealLine.XData = nan;
+            obj.idealLine.YData = nan;
+            obj.histBar.XData = nan;
+            obj.histBar.YData = nan;
+            [obj.histIdealLines.XData] = deal(nan);
+            [obj.histIdealLines.YData] = deal(nan);
         end
         
         function menuButtonPressed(obj)
@@ -426,19 +462,19 @@ classdef ChannelSpotProjectionViewer < handle
             
             if ~isempty(obj.channel.selectedProjectionImageStack)
                 if ~isempty(obj.channel.selectedProjectionImageStack.fileInfo)
-                    uimenu(menu, 'Label', 'Reload Image Stack From File', ...
+                    uimenu(menu, 'Label', 'Reload Selected Image Stack From File', ...
                         'Separator', 'on', ...
                         'Callback', @(varargin) obj.channel.selectedProjectionImageStack.reload());
                 end
 
-                uimenu(menu, 'Label', 'Rename Image Stack', ...
+                uimenu(menu, 'Label', 'Rename Selected Image Stack', ...
                     'Separator', isempty(obj.channel.selectedProjectionImageStack.fileInfo), ...
                     'Callback', @(varargin) obj.channel.selectedProjectionImageStack.editLabel());
             end
                 
             uimenu(menu, 'Label', 'Set Sample Interval', ...
                 'Separator', 'on', ...
-                'Callback', @(varargin) obj.channel.setSampleInterval());
+                'Callback', @(varargin) obj.channel.setSpotTsSampleInterval());
             
 %             uimenu(menu, 'Label', 'Clear Projections', ...
 %                 'Separator', 'on', ...
@@ -448,9 +484,32 @@ classdef ChannelSpotProjectionViewer < handle
 %                 'Separator', 'on', ...
 %                 'Callback', @(varargin) obj.channel.updateSpotProjections());
             
-            uimenu(menu, 'Label', ['Sum Frame Blocks (' num2str(obj.channel.sumFramesBlockSize) ')'], ...
+            label = 'Sum Frame Blocks';
+            if obj.channel.spotTsSumEveryN > 1
+                label = [label ' (' num2str(obj.channel.spotTsSumEveryN) ')'];
+            end
+            uimenu(menu, 'Label', label, ...
                 'Separator', 'on', ...
-                'Callback', @(varargin) obj.channel.editSumFramesBlockSize());
+                'Checked', obj.channel.spotTsSumEveryN > 1, ...
+                'Callback', @(varargin) obj.channel.editSpotTsSumEveryN());
+            
+            label = 'Set Filter';
+            isDigitalFilter = ~isempty(obj.channel.spotTsFilter) && class(obj.channel.spotTsFilter) == "digitalFilter";
+            fname = '';
+            if isDigitalFilter
+                fname = [char(obj.channel.spotTsFilter.FrequencyResponse) char(obj.channel.spotTsFilter.ImpulseResponse)];
+            end
+            if ~isempty(fname)
+                label = [label ' (' fname ')'];
+            end
+            submenu = uimenu(menu, 'Label', label, 'Separator', 'on');
+            label = 'Digital Filter';
+            if isDigitalFilter && ~isempty(fname)
+                label = [label ' (' fname ')'];
+            end
+            uimenu(submenu, 'Label', label, ...
+                'Checked', isDigitalFilter, ...
+                'Callback', @(varargin) obj.channel.editSpotTsDigitalFilter());
             
 %             idealizationMethodMenu = uimenu(menu, 'Label', 'Idealization Method', ...
 %                 'Separator', 'on');
@@ -503,11 +562,43 @@ classdef ChannelSpotProjectionViewer < handle
             if isempty(y) || all(isnan(y))
                 return
             end
+            xmin = x(1);
+            xmax = x(end);
+            ymin = min(y);
+            ymax = max(y);
+            dy = 0.1 * (ymax - ymin);
+            % scale to max time across all viewers in containing figure
+            fig = ancestor(obj.Parent, 'Figure');
+            if ~isempty(fig.UserData) && class(fig.UserData) == "ExperimentViewer"
+                vis = fig.UserData.getVisibleChannelIndices();
+                for viewer = fig.UserData.timeSeriesViewers(vis)
+                    x = viewer.dataLine.XData;
+                    if ~isempty(x)
+                        xmin = min(xmin, x(1));
+                        xmax = max(xmax, x(end));
+                    end
+                end
+            end
+            try
+                axis(obj.dataAxes, [xmin xmax ymin-dy ymax+dy]);
+            catch
+            end
+        end
+        
+        function autoscaleY(obj)
+            if isequal(obj.dataAxes.XLim, [0 1])
+                obj.autoscale();
+                return
+            end
+            y = obj.dataLine.YData;
+            if isempty(y) || all(isnan(y))
+                return
+            end
             ymin = min(y);
             ymax = max(y);
             dy = 0.1 * (ymax - ymin);
             try
-                axis(obj.dataAxes, [x(1) x(end) ymin-dy ymax+dy]);
+                obj.dataAxes.YLim = [ymin-dy ymax+dy];
             catch
             end
         end

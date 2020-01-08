@@ -20,7 +20,7 @@ classdef ImageStack < handle
         % frame <--> time
         frameIntervalSec = [];
         
-        % file* properties are for refernecing data in an image file.
+        % file* properties are for referencing data in an image file.
         
         % struct array of file info for each frame as returned by imfinfo.
         % Note: Array may include only a subset of the frames in the file
@@ -36,10 +36,11 @@ classdef ImageStack < handle
         % Data modified as compared to file?
         fileDataModified = false;
         
-        % USER INTERFACE PROPERTIES
+        % STATE PROPERTIES
         
         % Selected frame.
         selectedFrameIndex = 1;
+        
     end
     
     properties (Dependent)
@@ -129,6 +130,7 @@ classdef ImageStack < handle
         function set.frameIntervalSec(obj, dt)
             obj.frameIntervalSec = dt;
             notify(obj, 'FrameIntervalChanged');
+            notify(obj, 'LabelChanged'); % interval could alter getLabelWithInfo() 
         end
         
         function frame = get.selectedFrame(obj)

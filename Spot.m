@@ -20,7 +20,7 @@ classdef Spot < handle
         % string array of tags
         tags = string.empty;
         
-        % used for projections, e.g. the spot PSF
+        % used for z-projections, e.g. the spot PSF
         mask = logical([ ...
             0 1 1 1 0; ...
             1 1 1 1 1; ...
@@ -29,15 +29,15 @@ classdef Spot < handle
             0 1 1 1 0  ...
             ]);
         
-        % e.g. Image stack spot z-projection.
-        zproj = TimeSeries;
+        % Time series data. e.g. image stack spot z-projection.
+        tsData = TimeSeries;
         
-        % Model idealization of z-projection time series data.
-        zprojModel = struct(); % generic container for model params and arrays
+        % Model idealization of time series data.
+        tsModel = struct(); % generic container for model params and arrays
         
         % Known model for comparison when evaluating different models.
         % e.g. from simulation
-        zprojKnownModel = struct(); % generic container for model params and arrays
+        tsKnownModel = struct(); % generic container for model params and arrays
     end
     
     properties (Dependent)
@@ -50,6 +50,21 @@ classdef Spot < handle
     methods
         function obj = Spot()
             %SPOT Constructor.
+        end
+        
+        function set.tags(obj, tags)
+            if isempty(tags)
+                obj.tags = string.empty;
+            elseif ischar(tags) || (isstring(tags) && numel(tags) == 1)
+                obj.tags = Spot.str2arr(tags, ',');
+            elseif isstring(tags)
+                obj.tags = tags;
+            else
+                return
+            end
+        end
+        function str = getTagsString(obj)
+            str = Spot.arr2str(obj.tags, ",");
         end
         
         function x = get.x(obj)
@@ -109,21 +124,6 @@ classdef Spot < handle
             obj.xy(:,1) = col;
         end
         
-        function set.tags(obj, tags)
-            if isempty(tags)
-                obj.tags = string.empty;
-            elseif ischar(tags) || (isstring(tags) && numel(tags) == 1)
-                obj.tags = Spot.str2arr(tags, ',');
-            elseif isstring(tags)
-                obj.tags = tags;
-            else
-                return
-            end
-        end
-        function str = getTagsString(obj)
-            str = Spot.arr2str(obj.tags, ",");
-        end
-        
         function [mask3d, rows, cols] = getMaskZProjection(obj, imstack)
             mrows = size(obj.mask, 1);
             mcols = size(obj.mask, 2);
@@ -166,7 +166,17 @@ classdef Spot < handle
         end
         
         function zproj = getZProjectionFromImageStack(obj, imstack)
-            if isempty(obj.xy) || isempty(imstack.data)
+            if isempty(obj.xy)
+                return
+            end
+            if ~exist('imstack', 'var')
+                try
+                    imstack = obj.channel.selectedProjectionImageStack;
+                catch
+                    return
+                end
+            end
+            if isempty(imstack.data)
                 return
             end
             [mask3d, rows, cols] = obj.getMaskZProjection(imstack);
@@ -178,17 +188,46 @@ classdef Spot < handle
         end
         
         function updateZProjectionFromImageStack(obj, imstack)
-            if isempty(obj.xy) || isempty(imstack) || isempty(imstack.data)
+            if isempty(obj.xy)
                 return
             end
-            obj.zproj.rawTime = imstack.frameIntervalSec;
-            obj.zproj.rawData = obj.getZProjectionFromImageStack(imstack);
-            if isempty(obj.zproj.rawTime)
-                obj.zproj.timeUnits = 'frames';
-            else
-                obj.zproj.timeUnits = 'seconds';
+            if ~exist('imstack', 'var')
+                try
+                    imstack = obj.channel.selectedProjectionImageStack;
+                catch
+                    return
+                end
             end
-            obj.zproj.dataUnits = 'au';
+            if isempty(imstack.data)
+                return
+            end
+            obj.tsData.rawTime = imstack.frameIntervalSec;
+            obj.tsData.rawData = obj.getZProjectionFromImageStack(imstack);
+            if isempty(obj.tsData.rawTime)
+                obj.tsData.timeUnits = 'frames';
+            else
+                obj.tsData.timeUnits = 'seconds';
+            end
+            if isempty(obj.tsData.dataUnits)
+                obj.tsData.dataUnits = 'au';
+            end
+        end
+        
+        function [x, y, isMasked] = getTimeSeriesData(obj)
+            x = obj.tsData.time;
+            y = obj.tsData.data;
+            isMasked = obj.tsData.mask;
+            % channel level options for resampling and filtering
+            if isempty(obj.channel)
+                return
+            end
+            if obj.channel.spotTsSumEveryN > 1
+                N = obj.channel.spotTsSumEveryN;
+                [x, y, isMasked] = TimeSeries.sumEveryN(N, x, y, isMasked);
+            end
+            if obj.channel.spotTsApplyFilter && ~isempty(obj.channel.spotTsFilter)
+                y = filter(obj.channel.spotTsFilter, y);
+            end
         end
     end
     
