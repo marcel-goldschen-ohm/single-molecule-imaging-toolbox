@@ -1,10 +1,10 @@
-classdef ChannelSpotTimeSeriesViewer < handle
+classdef (ConstructOnLoad) ChannelSpotTimeSeriesViewer < handle
     %CHANNELSPOTTIMESERIESVIEWER Summary of this class goes here
     %   Detailed explanation goes here
     
     properties
         % Channel handle.
-        channel = Channel;
+        channel = Channel.empty;
         
         % Bounding box in which to arrange items within Parent.
         % [] => fill Parent container.
@@ -17,6 +17,7 @@ classdef ChannelSpotTimeSeriesViewer < handle
         histAxes = gobjects(0);
         histBar = gobjects(0);
         histIdealLines = gobjects(0);
+        histNumStatesText = gobjects(0);
         
         infoText = gobjects(0);
         menuButton = gobjects(0);
@@ -80,9 +81,9 @@ classdef ChannelSpotTimeSeriesViewer < handle
                 'BarWidth', 1, ...
                 'LineStyle', 'none', ...
                 'FaceAlpha', 0.5);
-            obj.histIdealLines = plot(ax, nan, nan, '-', ...
-                'LineWidth', 1.5, ...
-                'HitTest', 'off', 'PickableParts', 'none');
+            obj.histNumStatesText = text(ax, 1, 1, '', ...
+                'Units', 'normalized', ...
+                'HorizontalAlignment', 'right', 'VerticalAlignment', 'top');
             
             linkaxes([obj.dataAxes obj.histAxes], 'y');
             
@@ -214,17 +215,22 @@ classdef ChannelSpotTimeSeriesViewer < handle
         
         function set.Parent(obj, parent)
             % reparent and reposition all graphics objects
-            obj.projAxes.Parent = parent;
+            obj.dataAxes.Parent = parent;
             obj.histAxes.Parent = parent;
             obj.infoText.Parent = parent;
             obj.menuButton.Parent = parent;
             obj.autoscaleButton.Parent = parent;
+            obj.showIdealizationBtn.Parent = parent;
+            obj.filterBtn.Parent = parent;
+            obj.numBinsText.Parent = parent;
+            obj.numBinsEdit.Parent = parent;
+            obj.sqrtCountsBtn.Parent = parent;
             obj.resize();
             obj.updateResizeListener();
         end
         
         function visible = get.Visible(obj)
-            visible = obj.projAxes.Visible;
+            visible = obj.dataAxes.Visible;
         end
         
         function set.Visible(obj, visible)
@@ -240,6 +246,11 @@ classdef ChannelSpotTimeSeriesViewer < handle
             obj.infoText.Visible = visible;
             obj.menuButton.Visible = visible;
             obj.autoscaleButton.Visible = visible;
+            obj.showIdealizationBtn.Visible = visible;
+            obj.filterBtn.Visible = visible;
+            obj.numBinsText.Visible = visible;
+            obj.numBinsEdit.Visible = visible;
+            obj.sqrtCountsBtn.Visible = visible;
         end
         
         function set.Position(obj, position)
@@ -348,6 +359,9 @@ classdef ChannelSpotTimeSeriesViewer < handle
         end
         
         function updateTimeSeries(obj)
+            if obj.Visible == "off"
+                return
+            end
             obj.updateInfoText();
             spot = obj.channel.selectedSpot;
             if ~isempty(spot)
@@ -389,9 +403,10 @@ classdef ChannelSpotTimeSeriesViewer < handle
                     end
                     obj.histBar.XData = centers;
                     obj.histBar.YData = counts;
+                    % norm dist about idealized states
                     if any(isnan(obj.idealLine.YData)) || isempty(obj.idealLine.YData)
-                        [obj.histIdealLines.XData] = deal(nan);
-                        [obj.histIdealLines.YData] = deal(nan);
+                        delete(obj.histIdealLines);
+                        obj.histIdealLines = gobjects(0);
                     else
                         if numel(centers) < 100
                             bins = reshape(linspace(edges(1), edges(end), 101), [] ,1);
@@ -412,12 +427,16 @@ classdef ChannelSpotTimeSeriesViewer < handle
                             fits = sqrt(fits);
                         end
                         bins = repmat(bins, 1, nustates);
-                        if isgraphics(obj.histIdealLines)
-                            delete(obj.histIdealLines);
-                        end
+                        delete(obj.histIdealLines);
+                        obj.histIdealLines = gobjects(0);
                         obj.histIdealLines = plot(obj.histAxes, fits, bins, '-', ...
                             'LineWidth', 1.5, ...
                             'HitTest', 'off', 'PickableParts', 'none');
+                    end
+                    if isempty(obj.histIdealLines)
+                        obj.histNumStatesText.String = '';
+                    else
+                        obj.histNumStatesText.String = num2str(numel(obj.histIdealLines));
                     end
                     return
                 end
@@ -428,8 +447,8 @@ classdef ChannelSpotTimeSeriesViewer < handle
             obj.idealLine.YData = nan;
             obj.histBar.XData = nan;
             obj.histBar.YData = nan;
-            [obj.histIdealLines.XData] = deal(nan);
-            [obj.histIdealLines.YData] = deal(nan);
+            delete(obj.histIdealLines);
+            obj.histIdealLines = gobjects(0);
         end
         
         function menuButtonPressed(obj)
