@@ -48,8 +48,8 @@ classdef (ConstructOnLoad) ChannelSpotTimeSeriesViewer < handle
     
     methods
         function obj = ChannelSpotTimeSeriesViewer(parent)
-            %CHANNELSPOTTIMESERIESVIEWER Construct an instance of this class
-            %   Detailed explanation goes here
+            %CHANNELSPOTTIMESERIESVIEWER Constructor.
+            lh = 20;
             
             % requires a parent graphics object
             % will resize itself to its parent when the containing figure
@@ -91,21 +91,21 @@ classdef (ConstructOnLoad) ChannelSpotTimeSeriesViewer < handle
                 'Callback', @(varargin) obj.infoTextPressed());
             
             obj.menuButton = uicontrol(parent, 'style', 'pushbutton', ...
-                'String', char(hex2dec('2630')), 'Position', [0 0 15 15], ...
+                'String', char(hex2dec('2630')), 'Position', [0 0 lh lh], ...
                 'Tooltip', 'Projection Menu', ...
                 'Callback', @(varargin) obj.menuButtonPressed());
             
             obj.autoscaleButton = uicontrol(parent, 'style', 'pushbutton', ...
-                'String', char(hex2dec('2922')), 'Position', [0 0 15 15], ...
+                'String', char(hex2dec('2922')), 'Position', [0 0 lh lh], ...
                 'Tooltip', 'Autoscale', ...
                 'Callback', @(varargin) obj.autoscale());
             obj.showIdealizationBtn = uicontrol(parent, 'style', 'togglebutton', ...
-                'String', char(hex2dec('2a05')), 'Position', [0 0 15 15], ...
+                'String', char(hex2dec('2a05')), 'Position', [0 0 lh lh], ...
                 'Tooltip', 'Show Idealization', ...
                 'Value', 1, ...
                 'Callback', @(varargin) obj.updateTimeSeries());
             obj.filterBtn = uicontrol(parent, 'style', 'togglebutton', ...
-                'String', char(hex2dec('2a0d')), 'Position', [0 0 15 15], ...
+                'String', char(hex2dec('2a0d')), 'Position', [0 0 lh lh], ...
                 'Tooltip', 'Apply Filter', ...
                 'Value', 1, ...
                 'Callback', @(varargin) obj.updateTimeSeries());
@@ -260,10 +260,15 @@ classdef (ConstructOnLoad) ChannelSpotTimeSeriesViewer < handle
             obj.resize();
         end
         
+        function refresh(obj)
+            obj.updateTimeSeries();
+        end
+        
         function resize(obj)
             %RESIZE Reposition objects within Parent.
             
             margin = 2;
+            lh = 20;
             parentUnits = obj.Parent.Units;
             obj.Parent.Units = 'pixels';
             try
@@ -297,19 +302,19 @@ classdef (ConstructOnLoad) ChannelSpotTimeSeriesViewer < handle
 %             if ~isempty(obj.projAxes.YLabel.String)
 %                 tw = tw + 20;
 %             end
-            obj.dataAxes.Position = [x+tw y+20 w-tw-100-margin max(1,h-35-margin)];
-            obj.histAxes.Position = [x+w-100 y+20 100 max(1,h-35-margin)];
+            obj.dataAxes.Position = [x+tw y+20 w-tw-100-margin max(1,h-20-lh-margin)];
+            obj.histAxes.Position = [x+w-100 y+20 100 max(1,h-20-lh-margin)];
             pos = ChannelSpotTimeSeriesViewer.plotboxpos(obj.dataAxes);
             
-            obj.infoText.Position = [pos(1)+45+margin pos(2)+pos(4)+margin pos(3)-2*margin-90 15];
-            obj.menuButton.Position = [pos(1)+30 pos(2)+pos(4)+margin 15 15];
-            obj.filterBtn.Position = [x+w-100-margin-45 y+h-15 15 15];
-            obj.showIdealizationBtn.Position = [x+w-100-margin-30 y+h-15 15 15];
-            obj.autoscaleButton.Position = [x+w-100-margin-15 y+h-15 15 15];
+            obj.infoText.Position = [pos(1)+30+lh+margin pos(2)+pos(4)+margin pos(3)-30-2*margin-4*lh lh];
+            obj.menuButton.Position = [pos(1)+30 pos(2)+pos(4)+margin lh lh];
+            obj.filterBtn.Position = [x+w-100-margin-3*lh y+h-lh lh lh];
+            obj.showIdealizationBtn.Position = [x+w-100-margin-2*lh y+h-lh lh lh];
+            obj.autoscaleButton.Position = [x+w-100-margin-lh y+h-lh lh lh];
             
-            obj.numBinsText.Position = [x+w-100 y+h-15 30 15];
-            obj.numBinsEdit.Position = [x+w-70 y+h-15 55 15];
-            obj.sqrtCountsBtn.Position = [x+w-15 y+h-15 15 15];
+            obj.numBinsText.Position = [x+w-100 y+h-lh 30 lh];
+            obj.numBinsEdit.Position = [x+w-70 y+h-lh 70-lh lh];
+            obj.sqrtCountsBtn.Position = [x+w-lh y+h-lh lh lh];
         end
         
         function updateResizeListener(obj)

@@ -43,6 +43,7 @@ classdef ChannelImageViewer < ImageStackViewer
     methods
         function obj = ChannelImageViewer(parent)
             %CHANNELIMAGEVIEWER Constructor.
+            lh = 20;
             
             % requires a parent graphics object
             % will resize itself to its parent when the containing figure
@@ -60,7 +61,7 @@ classdef ChannelImageViewer < ImageStackViewer
             obj.infoText.Callback = @(varargin) obj.infoTextPressed();
             
             obj.menuButton = uicontrol(parent, 'style', 'pushbutton', ...
-                'String', char(hex2dec('2630')), 'Position', [0 0 15 15], ...
+                'String', char(hex2dec('2630')), 'Position', [0 0 lh lh], ...
                 'Tooltip', 'Image Menu', ...
                 'Callback', @(varargin) obj.menuButtonPressed());
             

@@ -77,6 +77,7 @@ classdef ImageStackViewer < handle
     methods
         function obj = ImageStackViewer(parent)
             %IMAGESTACKVIEWER Constructor
+            lh = 20;
             
             % Requires a parent graphics object. Will resize itself to its
             % parent when the containing figure is resized. If parent is
@@ -115,11 +116,11 @@ classdef ImageStackViewer < handle
             
             % buttons
             obj.zoomOutButton = uicontrol(parent, 'style', 'pushbutton', ...
-                'String', char(hex2dec('2922')), 'Position', [0 0 15 15], ...
+                'String', char(hex2dec('2922')), 'Position', [0 0 lh lh], ...
                 'Tooltip', 'Show Full Image', ...
                 'Callback', @(varargin) obj.zoomOutFullImage());
             obj.brightnessContrastButton = uicontrol(parent, 'style', 'pushbutton', ...
-                'String', char(hex2dec('25d0')), 'Position', [0 0 15 15], ...
+                'String', char(hex2dec('25d0')), 'Position', [0 0 lh lh], ...
                 'Tooltip', 'Brightness/Contrast', ...
                 'Callback', @(varargin) obj.brightnessContrastButtonDown());
             obj.rightHeaderButtons = [obj.brightnessContrastButton obj.zoomOutButton];
@@ -260,6 +261,7 @@ classdef ImageStackViewer < handle
             
             % Get bounding box [x y w h] within Parent in which to display
             % all graphics objects.
+            lh = 20;
             margin = 2;
             parentUnits = obj.Parent.Units;
             obj.Parent.Units = 'pixels';
@@ -291,13 +293,13 @@ classdef ImageStackViewer < handle
             obj.Parent.Units = parentUnits;
             
             % Position image axes.
-            obj.imageAxes.Position = [x y+15+margin w max(1,h-30-2*margin)];
+            obj.imageAxes.Position = [x y+lh+margin w max(1,h-2*lh-2*margin)];
             if isgraphics(obj.toolbarPanel)
-                obj.imageAxes.Position(4) = obj.imageAxes.Position(4) - 15 - margin;
+                obj.imageAxes.Position(4) = obj.imageAxes.Position(4) - lh - margin;
             end
             if ~isempty(obj.imageAxes.YLabel.String)
-                obj.imageAxes.Position(1) = obj.imageAxes.Position(1) + 15 + margin;
-                obj.imageAxes.Position(3) = obj.imageAxes.Position(3) - 15 - margin;
+                obj.imageAxes.Position(1) = obj.imageAxes.Position(1) + lh + margin;
+                obj.imageAxes.Position(3) = obj.imageAxes.Position(3) - lh - margin;
             end
             
             % Get actual displayed image axes position.
@@ -306,7 +308,7 @@ classdef ImageStackViewer < handle
             % Position all other graphics objects around the image axes.
             
             % frame slider
-            obj.frameSlider.Position = [pos(1) pos(2)-margin-15 pos(3) 15];
+            obj.frameSlider.Position = [pos(1) pos(2)-margin-lh pos(3) lh];
             
             % header info text and left and right header buttons
             wl = 0;
@@ -320,12 +322,12 @@ classdef ImageStackViewer < handle
                     wr = wr + button.Position(3);
                 end
             end
-            obj.infoText.Position = [pos(1)+wl pos(2)+pos(4)+margin pos(3)-wl-wr 15];
+            obj.infoText.Position = [pos(1)+wl pos(2)+pos(4)+margin pos(3)-wl-wr lh];
             if wl
                 bx = pos(1);
                 by = pos(2) + pos(4) + margin;
                 for btn = obj.leftHeaderButtons
-                    btn.Position = [bx by btn.Position(3) 15];
+                    btn.Position = [bx by btn.Position(3) lh];
                     bx = bx + btn.Position(3);
                 end
             end
@@ -333,14 +335,14 @@ classdef ImageStackViewer < handle
                 bx = pos(1) + pos(3) - wr + margin;
                 by = pos(2) + pos(4) + margin;
                 for btn = obj.rightHeaderButtons
-                    btn.Position = [bx by btn.Position(3) 15];
+                    btn.Position = [bx by btn.Position(3) lh];
                     bx = bx + btn.Position(3);
                 end
             end
             
             % toolbar above header
             if isgraphics(obj.toolbarPanel)
-                obj.toolbarPanel.Position = [pos(1) pos(2)+pos(4)+margin+15 pos(3) 15];
+                obj.toolbarPanel.Position = [pos(1) pos(2)+pos(4)+margin+lh pos(3) lh];
             end
         end
         

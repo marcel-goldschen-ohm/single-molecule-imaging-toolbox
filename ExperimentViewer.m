@@ -64,6 +64,7 @@ classdef ExperimentViewer < handle
     properties (Access = private)
         resizeListener = event.listener.empty;
         selectedSpotIndexChangedListener = event.listener.empty;
+        channelLabelChangedListeners = event.listener.empty;
     end
     
     properties (Dependent)
@@ -181,7 +182,6 @@ classdef ExperimentViewer < handle
                 'Callback', @(s,e) obj.setTsModel(s.String{s.Value}));
             obj.tsModelParamsBtn = uicontrol(parent, 'Style', 'pushbutton', ...
                 'String', char(hex2dec('2699')), ...
-                'FontSize', 18, ...
                 'Tooltip', 'Model Parameters', ...
                 'Callback', @(varargin) obj.editTsModelParams());
 
@@ -251,6 +251,10 @@ classdef ExperimentViewer < handle
                 delete(obj.selectedSpotIndexChangedListener);
                 obj.selectedSpotIndexChangedListener = event.listener.empty;
             end
+            if any(isvalid(obj.channelLabelChangedListeners))
+                delete(obj.channelLabelChangedListeners);
+                obj.channelLabelChangedListeners = event.listener.empty;
+            end
         end
         
         function updateListeners(obj)
@@ -261,27 +265,54 @@ classdef ExperimentViewer < handle
             obj.selectedSpotIndexChangedListener = ...
                 addlistener(obj.experiment, 'SelectedSpotIndexChanged', ...
                 @(varargin) obj.onSelectedSpotIndexChanged());
+            for c = 1:numel(obj.experiment.channels)
+                obj.channelLabelChangedListeners(c) = ...
+                    addlistener(obj.experiment.channels(c), 'LabelChanged', ...
+                    @(varargin) obj.updateChannelsListBox());
+            end
         end
         
         function set.experiment(obj, experiment)
             obj.experiment = experiment;
-            
-            % delete old channel viewers
-            delete(obj.imageViewers);
-            delete(obj.timeSeriesViewers);
 
-            % create new channel viewers
+            % update channel viewers
             nchannels = numel(experiment.channels);
-            obj.imageViewers = ChannelImageViewer.empty;
-            obj.timeSeriesViewers = ChannelSpotTimeSeriesViewer.empty;
-            for c = 1:nchannels
+            for c = 1:min(nchannels, numel(obj.imageViewers))
+                obj.imageViewers(c).channel = experiment.channels(c);
+            end
+            for c = 1:min(nchannels, numel(obj.timeSeriesViewers))
+                obj.timeSeriesViewers(c).channel = experiment.channels(c);
+            end
+            for c = numel(obj.imageViewers)+1:nchannels
                 obj.imageViewers(c) = ChannelImageViewer(obj.Parent);
                 obj.imageViewers(c).channel = experiment.channels(c);
                 obj.imageViewers(c).removeResizeListener(); % Handled by this class.
+            end
+            for c = numel(obj.timeSeriesViewers)+1:nchannels
                 obj.timeSeriesViewers(c) = ChannelSpotTimeSeriesViewer(obj.Parent);
                 obj.timeSeriesViewers(c).channel = experiment.channels(c);
                 obj.timeSeriesViewers(c).removeResizeListener(); % Handled by this class.
             end
+            if numel(obj.imageViewers) > nchannels
+                delete(obj.imageViewers(nchannels+1:end));
+                obj.imageViewers(nchannels+1:end) = [];
+            end
+            if numel(obj.timeSeriesViewers) > nchannels
+                delete(obj.timeSeriesViewers(nchannels+1:end));
+                obj.timeSeriesViewers(nchannels+1:end) = [];
+            end
+%             delete(obj.imageViewers);
+%             delete(obj.timeSeriesViewers);
+%             obj.imageViewers = ChannelImageViewer.empty;
+%             obj.timeSeriesViewers = ChannelSpotTimeSeriesViewer.empty;
+%             for c = 1:nchannels
+%                 obj.imageViewers(c) = ChannelImageViewer(obj.Parent);
+%                 obj.imageViewers(c).channel = experiment.channels(c);
+%                 obj.imageViewers(c).removeResizeListener(); % Handled by this class.
+%                 obj.timeSeriesViewers(c) = ChannelSpotTimeSeriesViewer(obj.Parent);
+%                 obj.timeSeriesViewers(c).channel = experiment.channels(c);
+%                 obj.timeSeriesViewers(c).removeResizeListener(); % Handled by this class.
+%             end
             
             % update channels list box and refresh channels display
             obj.updateChannelsListBox();
@@ -294,11 +325,6 @@ classdef ExperimentViewer < handle
             if ~isempty(obj.timeSeriesViewers)
                 linkaxes(horzcat(obj.timeSeriesViewers.dataAxes), 'x');
             end
-            
-%             % draw time series
-%             for viewer = obj.timeSeriesViewers
-%                 viewer.redraw();
-%             end
             
             % update controls
             obj.selectionTagsMaskEdit.String = obj.experiment.getSpotSelectionTagsMaskString();
@@ -352,8 +378,8 @@ classdef ExperimentViewer < handle
             
             % controls
             wc = 150;
-            lh = 15;
-            lh2 = 18;
+            lh = 20;
+            lh2 = 20;
             y = y0 + h - lh;
             obj.menuBtn.Position = [x0 y lh lh];
             obj.refreshUiBtn.Position = [x0+lh y lh lh];
@@ -486,7 +512,7 @@ classdef ExperimentViewer < handle
             obj.updateChannelsListBox();
             nchannels = numel(obj.experiment.channels);
             if nchannels > 1
-                obj.channelsListBox.Value = [obj.channelsListBox.Value numel(obj.experiment.channels)];
+                obj.channelsListBox.Value = unique([obj.channelsListBox.Value numel(obj.experiment.channels)]);
             end
             obj.experiment = obj.experiment; % updates everything
         end
@@ -511,6 +537,7 @@ classdef ExperimentViewer < handle
             obj.experiment.channels(idx) = [];
             
             obj.channelsListBox.Value = find(selected);
+            obj.channelsListBox.Value
             obj.experiment = obj.experiment; % updates everything
         end
         
@@ -561,6 +588,7 @@ classdef ExperimentViewer < handle
             nchannels = numel(obj.experiment.channels);
             idx(idx < 1) = [];
             idx(idx > nchannels) = [];
+            obj.updateChannelsListBox();
             obj.channelsListBox.Value = unique(idx);
             for c = 1:nchannels
                 obj.imageViewers(c).refresh();
@@ -805,21 +833,68 @@ classdef ExperimentViewer < handle
                         disc_input.divisive = model.informationCriterion;
                         disc_input.agglomerative = model.informationCriterion;
                     end
-                    for k = 1:numel(spots)
-                        sec2 = toc;
-                        if sec2 - sec > 30
-                            obj.msgText.String = ['Modeling trace ' num2str(k) '/' num2str(numel(spots)) '...'];
-                            drawnow;
-                            sec = sec2;
+                    if 0%model.informationCriterion == "DIC"
+                        disc_input.divisive = 'DIC';
+                        disc_input.agglomerative = 'BIC-GMM';
+                        ystiched = [];
+                        segStarts = [1];
+                        for k = 1:numel(spots)
+                            [x, y, isMasked] = spots(k).getTimeSeriesData();
+                            if ~any(isnan(isMasked))
+                                ystiched = [ystiched; y];
+                                segStarts = [segStarts segStarts(end)+length(y)];
+                            else
+%                                 y(isMasked) = nan;
+%                                 [ysegs, segi] = TimeSeries.getNonNanSegments(y);
+%                                 for j = 1:numel(ysegs)
+%                                     ystiched = [ystiched; ysegs{j}];
+%                                     segStarts = [segStarts segStarts(end)+length(ysegs{j})];
+%                                 end
+                            end
                         end
-                        [x, y, isMasked] = spots(k).getTimeSeriesData();
-                        y(isMasked) = nan;
-                        disc_fit = runDISC(y(~isMasked), disc_input);
-                        spots(k).tsModel = model;
-                        spots(k).tsModel.time = x;
-                        spots(k).tsModel.data = y;
-                        spots(k).tsModel.idealData = nan(size(y));
-                        spots(k).tsModel.idealData(~isMasked) = disc_fit.ideal;
+                        disc_fit = runDISC(ystiched, disc_input, 1000, segStarts);
+                        a = 1;
+                        for k = 1:numel(spots)
+                            [x, y, isMasked] = spots(k).getTimeSeriesData();
+                            spots(k).tsModel = model;
+                            if ~any(isnan(isMasked))
+                                spots(k).tsModel.time = x;
+                                spots(k).tsModel.data = y;
+                                ny = length(y);
+                                b = a + ny - 1;
+                                spots(k).tsModel.idealData = disc_fit.ideal(a:b);
+                                a = b + 1;
+                            else
+%                                 y(isMasked) = nan;
+%                                 spots(k).tsModel.time = x;
+%                                 spots(k).tsModel.data = y;
+%                                 spots(k).tsModel.idealData = nan(size(y));
+%                                 [ysegs, idx] = TimeSeries.getNonNanSegments(y);
+%                                 for j = 1:numel(ysegs)
+%                                     spots(k).tsModel.idealData(idx) = disc_fit.ideal(a:b);
+%                                     segi = segi+1;
+%                                     a = segStarts(segi);
+%                                     b = segStarts(segi+1)-1;
+%                                 end
+                            end
+                        end
+                    else
+                        for k = 1:numel(spots)
+                            sec2 = toc;
+                            if sec2 - sec > 30
+                                obj.msgText.String = ['Modeling trace ' num2str(k) '/' num2str(numel(spots)) '...'];
+                                drawnow;
+                                sec = sec2;
+                            end
+                            [x, y, isMasked] = spots(k).getTimeSeriesData();
+                            y(isMasked) = nan;
+                            disc_fit = runDISC(y(~isMasked), disc_input);
+                            spots(k).tsModel = model;
+                            spots(k).tsModel.time = x;
+                            spots(k).tsModel.data = y;
+                            spots(k).tsModel.idealData = nan(size(y));
+                            spots(k).tsModel.idealData(~isMasked) = disc_fit.ideal;
+                        end
                     end
                 catch err
                     errordlg([err.message ' Requires DISC (https://github.com/ChandaLab/DISC)'], 'DISC');
@@ -870,6 +945,66 @@ classdef ExperimentViewer < handle
                 disp(['... Aborted: ' err.message]);
             end
             close(wb);
+        end
+        
+        function tsModelMetrics(obj)
+            spots = obj.getAllSelectedSpots();
+            nspots = numel(spots);
+            Accuracy = zeros(nspots,1);
+            Precision = zeros(nspots,1);
+            Recall = zeros(nspots,1);
+            state_threshold = 0.1;  % 10% difference in true state value
+            event_threshold = 1;    % 1 frame difference in true event
+            % methods:
+            % - states: state detection only
+            % - events: event detection only
+            % - overall: state & event detection (recommended)
+            % - classification
+            method = 'overall';
+            clip = [];
+            for k = 1:nspots
+                try
+                    data = spots(k).tsModel.data;
+                    ideal = spots(k).tsModel.idealData;
+                    idealStates = zeros(size(ideal));
+                    ustates = unique(ideal);
+                    for j = 1:numel(ustates)
+                        idx = ideal == ustates(j);
+                        idealStates(idx) = j;
+                    end
+                    known = spots(k).tsKnownModel.idealData;
+                    knownStates = zeros(size(known));
+                    ustates = unique(known);
+                    for j = 1:numel(ustates)
+                        idx = known == ustates(j);
+                        knownStates(idx) = j;
+                    end
+                    [Accuracy(k), Precision(k), Recall(k)] = idealizationMetrics( ...
+                        data, ...
+                        idealStates, ...
+                        knownStates, ...
+                        method, ...
+                        state_threshold, ...
+                        event_threshold);
+                catch err
+                    disp(err.message);
+                    clip = [clip k];
+                end
+            end
+            Accuracy(clip) = [];
+            Precision(clip) = [];
+            Recall(clip) = [];
+            figure;
+            nbins = 20;
+            subplot(1,3,1);
+            histogram(Accuracy, nbins, 'Normalization', 'pdf');
+            title(['Accuracy: ' num2str(mean(Accuracy)),' ± ' num2str(std(Accuracy))]);
+            subplot(1,3,2);
+            histogram(Precision, nbins, 'Normalization', 'pdf');
+            title(['Precision: ' num2str(mean(Precision)),' ± ' num2str(std(Precision))]);
+            subplot(1,3,3);
+            histogram(Recall, nbins, 'Normalization', 'pdf');
+            title(['Recall: ' num2str(mean(Recall)),' ± ' num2str(std(Recall))]);
         end
     end
 end
