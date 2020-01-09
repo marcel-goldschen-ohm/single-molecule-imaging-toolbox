@@ -63,6 +63,7 @@ classdef (ConstructOnLoad) ChannelSpotTimeSeriesViewer < handle
                 'TickLength', [0.004 0.002]);
             ax = obj.dataAxes;
             ax.Toolbar.Visible = 'off';
+            ax.Interactions = []; %[regionZoomInteraction('Dimensions', 'xy')];
             box(ax, 'on');
             hold(ax, 'on');
             obj.dataLine = plot(ax, nan, nan, '.-', ...
@@ -75,6 +76,7 @@ classdef (ConstructOnLoad) ChannelSpotTimeSeriesViewer < handle
                 'XTick', [], 'YTick', []);
             ax = obj.histAxes;
             ax.Toolbar.Visible = 'off';
+            ax.Interactions = []; %[regionZoomInteraction('Dimensions', 'xy')];
             box(ax, 'on');
             hold(ax, 'on');
             obj.histBar = barh(ax, nan, nan, ...

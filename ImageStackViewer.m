@@ -92,15 +92,17 @@ classdef ImageStackViewer < handle
                 'Units', 'pixels', ...
                 'XTick', [], 'YTick', [], ...
                 'YDir', 'reverse');
-            obj.imageAxes.Toolbar.Visible = 'off';
-            box(obj.imageAxes, 'on');
-            hold(obj.imageAxes, 'on');
-            obj.imageFrame = imagesc(obj.imageAxes, [], ...
+            ax = obj.imageAxes;
+            ax.Toolbar.Visible = 'off';
+            ax.Interactions = []; %[regionZoomInteraction('Dimensions', 'xy') panInteraction('Dimensions', 'xy')];
+            box(ax, 'on');
+            hold(ax, 'on');
+            obj.imageFrame = imagesc(ax, [], ...
                 'HitTest', 'off', ...
                 'PickableParts', 'none');
-            axis(obj.imageAxes, 'image');
-            set(obj.imageAxes, 'ButtonDownFcn', @obj.imageAxesButtonDown);
-            colormap(obj.imageAxes, gray(2^16));
+            axis(ax, 'image');
+            set(ax, 'ButtonDownFcn', @obj.imageAxesButtonDown);
+            colormap(ax, gray(2^16));
             
             % frame slider
             obj.frameSlider = uicontrol(parent, 'Style', 'slider', ...
