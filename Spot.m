@@ -176,7 +176,7 @@ classdef Spot < handle
                     return
                 end
             end
-            if isempty(imstack.data)
+            if isempty(imstack) || isempty(imstack.data)
                 return
             end
             [mask3d, rows, cols] = obj.getMaskZProjection(imstack);
@@ -198,7 +198,7 @@ classdef Spot < handle
                     return
                 end
             end
-            if isempty(imstack.data)
+            if isempty(imstack) || isempty(imstack.data)
                 return
             end
             obj.tsData.rawTime = imstack.frameIntervalSec;
