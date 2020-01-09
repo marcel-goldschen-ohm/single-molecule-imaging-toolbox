@@ -388,8 +388,8 @@ classdef ExperimentViewer < handle
             obj.channelsListHeaderText.Position = [x0 y wc-2*lh lh];
             obj.addChannelBtn.Position = [x0+wc-2*lh y lh lh];
             obj.removeChannelsBtn.Position = [x0+wc-lh y lh lh];
-            y = y - 100;
-            obj.channelsListBox.Position = [x0 y wc 100];
+            y = y - 150;
+            obj.channelsListBox.Position = [x0 y wc 150];
             % layout
             y = y - margin - lh;
             obj.layoutHeaderText.Position = [x0 y wc lh];
