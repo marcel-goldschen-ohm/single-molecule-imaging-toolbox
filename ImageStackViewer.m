@@ -235,7 +235,7 @@ classdef ImageStackViewer < handle
             zoomOut = isempty(obj.imageStack) || isempty(obj.imageStack.data) || ~obj.isZoomed();
             obj.imageStack = imageStack;
             nframes = obj.imageStack.numFrames;
-            if nframes > 1
+            if nframes > 1 && obj.Visible == "on"
                 obj.frameSlider.Visible = 'on';
                 obj.frameSlider.Min = 1;
                 obj.frameSlider.Max = nframes;

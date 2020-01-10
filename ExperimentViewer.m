@@ -314,10 +314,6 @@ classdef ExperimentViewer < handle
 %                 obj.timeSeriesViewers(c).removeResizeListener(); % Handled by this class.
 %             end
             
-            % update channels list box and refresh channels display
-            obj.updateChannelsListBox();
-            obj.showChannels();
-            
             % link axes
             if ~isempty(obj.imageViewers)
                 linkaxes(horzcat(obj.imageViewers.imageAxes), 'xy');
@@ -341,6 +337,10 @@ classdef ExperimentViewer < handle
             else
                 obj.goToSpot(1);
             end
+            
+            % update channels list box and refresh channels display
+            obj.updateChannelsListBox();
+            obj.showChannels();
         end
         
         function parent = get.Parent(obj)
@@ -450,6 +450,10 @@ classdef ExperimentViewer < handle
             showProjections = obj.showProjectionsBtn.Value || obj.showImagesAndProjectionsBtn.Value;
             if ~showImages
                 [obj.imageViewers.Visible] = deal(0);
+                for viewer = obj.imageViewers
+                    viewer.spotMarkers.Visible = 0;
+                    viewer.selectedSpotMarker.Visible = 0;
+                end
             end
             if ~showProjections
                 [obj.timeSeriesViewers.Visible] = deal(0);
@@ -457,6 +461,10 @@ classdef ExperimentViewer < handle
             if ~isempty(invischannels)
                 [obj.imageViewers(invischannels).Visible] = deal(0);
                 [obj.timeSeriesViewers(invischannels).Visible] = deal(0);
+                for viewer = obj.imageViewers(invischannels)
+                    viewer.spotMarkers.Visible = 0;
+                    viewer.selectedSpotMarker.Visible = 0;
+                end
             end
             if nvischannels > 0
                 x = x0 + wc + margin;
@@ -585,6 +593,9 @@ classdef ExperimentViewer < handle
             idx = obj.getVisibleChannelIndices();
             channels = obj.experiment.channels(idx);
         end
+        function channels = getInvisibleChannels(obj)
+            channels = setdiff(obj.experiment.channels, obj.getVisibleChannels());
+        end
         
         function showChannels(obj, idx)
             if ~exist('idx', 'var')
@@ -598,6 +609,7 @@ classdef ExperimentViewer < handle
             for c = 1:nchannels
                 obj.imageViewers(c).refresh();
             end
+            obj.updateShowSpotMarkers();
             obj.resize();
         end
         
@@ -721,8 +733,6 @@ classdef ExperimentViewer < handle
         
         function refreshUi(obj)
             obj.experiment = obj.experiment;
-            obj.resize();
-            obj.updateShowSpotMarkers();
         end
         
         function goToSpot(obj, k)
@@ -779,7 +789,9 @@ classdef ExperimentViewer < handle
         
         function updateShowSpotMarkers(obj)
             for viewer = obj.imageViewers
-                viewer.spotMarkers.Visible = obj.showSpotMarkersCBox.Value == 1;
+                if viewer.Visible == "on"
+                    viewer.spotMarkers.Visible = obj.showSpotMarkersCBox.Value == 1;
+                end
             end
         end
         
