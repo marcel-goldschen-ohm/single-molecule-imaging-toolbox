@@ -77,10 +77,10 @@ classdef Channel < handle
         
         function delete(obj)
             for channel = obj.getOtherChannels()
-                if channel.alignedToChannel == obj
+                if isequal(channel.alignedToChannel, obj)
                     channel.alignedToChannel = Channel.empty;
                 end
-                if channel.overlayChannel == obj
+                if isequal(channel.overlayChannel, obj)
                     channel.overlayChannel = Channel.empty;
                 end
             end

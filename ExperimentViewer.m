@@ -525,8 +525,14 @@ classdef ExperimentViewer < handle
                 return
             end
             
-            if questdlg('Remove selected channels?', 'Remove Channels') ~= "Yes"
-                return
+            try
+                if Utilities.questdlgInFig(gcf, 'Remove selected channels?', 'Remove Channels') ~= "Yes"
+                    return
+                end
+            catch
+                if questdlg('Remove selected channels?', 'Remove Channels') ~= "Yes"
+                    return
+                end
             end
             
             selected = false(1, numel(obj.experiment.channels));
@@ -537,7 +543,6 @@ classdef ExperimentViewer < handle
             obj.experiment.channels(idx) = [];
             
             obj.channelsListBox.Value = find(selected);
-            obj.channelsListBox.Value
             obj.experiment = obj.experiment; % updates everything
         end
         
