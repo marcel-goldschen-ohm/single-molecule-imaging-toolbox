@@ -9,8 +9,6 @@ classdef ImageStack < handle
     %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
     
     properties
-        % DATA PROPERTIES
-        
         % string label
         label = "";
         
@@ -35,12 +33,6 @@ classdef ImageStack < handle
         
         % Data modified as compared to file?
         fileDataModified = false;
-        
-        % STATE PROPERTIES
-        
-        % Selected frame.
-        selectedFrameIndex = 1;
-        
     end
     
     properties (Dependent)
@@ -48,120 +40,23 @@ classdef ImageStack < handle
         height
         numFrames
         totalDuration
-        selectedFrame
     end
     
     events
         LabelChanged
         DataChanged
         FrameIntervalChanged
-        SelectedFrameChanged
     end
     
     methods
         function obj = ImageStack()
-            %IMAGEPLUS Constructor.
+            %IMAGESTACK Constructor.
         end
         
         function set.label(obj, s)
             obj.label = string(s);
             notify(obj, 'LabelChanged');
         end
-        
-        function w = get.width(obj)
-            w = 0;
-            if ~isempty(obj.data)
-                w = size(obj.data, 2);
-            elseif ~isempty(obj.fileInfo)
-                if ~isempty(obj.filePixelRegion)
-                    cols = obj.filePixelRegion{2};
-                    if numel(cols) == 2
-                        w = 1 + diff(cols);
-                        return
-                    end
-                end
-                w = obj.fileInfo(1).Width;
-            end
-        end
-        
-        function h = get.height(obj)
-            h = 0;
-            if ~isempty(obj.data)
-                h = size(obj.data, 1);
-            elseif ~isempty(obj.fileInfo)
-                if ~isempty(obj.filePixelRegion)
-                    rows = obj.filePixelRegion{1};
-                    if numel(rows) == 2
-                        h = 1 + diff(rows);
-                        return
-                    end
-                end
-                h = obj.fileInfo(1).Height;
-            end
-        end
-        
-        function n = get.numFrames(obj)
-            n = 0;
-            if ~isempty(obj.data)
-                n = size(obj.data, 3);
-            elseif ~isempty(obj.fileInfo)
-                n = numel(obj.fileInfo);
-            end
-        end
-        
-        function dur = get.totalDuration(obj)
-            if isempty(obj.frameIntervalSec)
-                dur = obj.numFrames;
-            else
-                dur = obj.numFrames * obj.frameIntervalSec;
-            end
-        end
-        
-        function t = get.selectedFrameIndex(obj)
-            t = max(0, min(obj.selectedFrameIndex, obj.numFrames));
-        end
-        
-        function set.selectedFrameIndex(obj, t)
-            t = max(0, min(t, obj.numFrames));
-            obj.selectedFrameIndex = t;
-            notify(obj, 'SelectedFrameChanged');
-        end
-        
-        function set.frameIntervalSec(obj, dt)
-            obj.frameIntervalSec = dt;
-            notify(obj, 'FrameIntervalChanged');
-            notify(obj, 'LabelChanged'); % interval could alter getLabelWithInfo() 
-        end
-        
-        function frame = get.selectedFrame(obj)
-            frame = obj.getFrame();
-        end
-        
-        function frame = getFrame(obj, t)
-            %GETFRAME Return the pixel data for the specified frame.
-            if ~exist('t', 'var') || isempty(t)
-                t = obj.selectedFrameIndex;
-            end
-            frame = [];
-            if ~t
-                return
-            elseif ~isempty(obj.data)
-                frame = obj.data(:,:,t);
-            elseif ~isempty(obj.fileInfo)
-                frame = obj.getFrameFromFile(t);
-            end
-        end
-        
-        function frame = getFrameFromFile(obj, t)
-            %GETFRAMEFROMFILE Return the file pixel data for the specified frame.
-            if ~isempty(obj.filePixelRegion)
-                frame = imread(obj.fileInfo(t).Filename, 'Info', obj.fileInfo(t), ...
-                    'PixelRegion', obj.filePixelRegion);
-            else
-                frame = imread(obj.fileInfo(t).Filename, 'Info', obj.fileInfo(t));
-            end
-        end
-        
         function label = getLabelWithInfo(obj)
             %GETLABELWITHINFO Return the image label with size/rate info
             w = obj.width;
@@ -179,7 +74,6 @@ classdef ImageStack < handle
                 label = sprintf('%s@%.1fHz', label, Hz);
             end
         end
-        
         function editLabel(obj)
             answer = inputdlg({'Label'}, 'Image Label', 1, {char(obj.label)});
             if isempty(answer)
@@ -188,9 +82,111 @@ classdef ImageStack < handle
             obj.label = string(answer{1});
         end
         
+        function w = get.width(obj)
+            w = 0;
+            if ~isempty(obj.data)
+                w = size(obj.data, 2);
+            elseif ~isempty(obj.fileInfo)
+                try
+                    if ~isempty(obj.filePixelRegion)
+                        cols = obj.filePixelRegion{2};
+                        if numel(cols) == 2
+                            w = 1 + diff(cols);
+                            return
+                        end
+                    end
+                catch
+                end
+                w = obj.fileInfo(1).Width;
+            end
+        end
+        function h = get.height(obj)
+            h = 0;
+            if ~isempty(obj.data)
+                h = size(obj.data, 1);
+            elseif ~isempty(obj.fileInfo)
+                try
+                    if ~isempty(obj.filePixelRegion)
+                        rows = obj.filePixelRegion{1};
+                        if numel(rows) == 2
+                            h = 1 + diff(rows);
+                            return
+                        end
+                    end
+                catch
+                end
+                h = obj.fileInfo(1).Height;
+            end
+        end
+        function n = get.numFrames(obj)
+            n = 0;
+            if ~isempty(obj.data)
+                n = size(obj.data, 3);
+            elseif ~isempty(obj.fileInfo)
+                n = numel(obj.fileInfo);
+            end
+        end
+        function dur = get.totalDuration(obj)
+            if isempty(obj.frameIntervalSec)
+                dur = obj.numFrames;
+            else
+                dur = obj.numFrames * obj.frameIntervalSec;
+            end
+        end
+        
+        function set.frameIntervalSec(obj, dt)
+            obj.frameIntervalSec = dt;
+            notify(obj, 'FrameIntervalChanged');
+            notify(obj, 'LabelChanged'); % interval could alter getLabelWithInfo() 
+        end
         function editFrameInterval(obj)
             answer = inputdlg({'Frame Interval (sec)'}, char(obj.label), 1, {num2str(obj.frameIntervalSec)});
+            if isempty(answer)
+                return
+            end
             obj.frameIntervalSec = str2num(answer{1});
+        end
+        
+        function frame = getFrame(obj, t)
+            %GETFRAME Return the pixel data for the specified frame.
+%             if ~exist('t', 'var') || isempty(t)
+%                 t = obj.selectedFrameIndex;
+%             end
+            frame = [];
+            if ~t
+                return
+            end
+            if ~isempty(obj.data)
+                try
+                    frame = obj.data(:,:,t);
+                catch
+                    frame = [];
+                end
+            end
+            if ~isempty(obj.fileInfo)
+                try
+                    frame = obj.getFrameFromFile(t);
+                catch
+                    frame = [];
+                end
+            end
+        end
+        function frame = getFrameFromFile(obj, t)
+            %GETFRAMEFROMFILE Return the file pixel data for the specified frame.
+            frame = [];
+            if isempty(obj.fileInfo)
+                return
+            end
+            try
+                if ~isempty(obj.filePixelRegion)
+                    frame = imread(obj.fileInfo(t).Filename, 'Info', obj.fileInfo(t), ...
+                        'PixelRegion', obj.filePixelRegion);
+                else
+                    frame = imread(obj.fileInfo(t).Filename, 'Info', obj.fileInfo(t));
+                end
+            catch
+                frame = [];
+            end
         end
         
         function clear(obj)
@@ -202,10 +198,10 @@ classdef ImageStack < handle
             obj.filePixelRegion = {};
             obj.fileDataModified = false;
         end
-        
         function load(obj, filepath, prompt, frames, pixelRegion, showOptionsDialog, loadFileInfoOnly)
             %LOAD Load image stack file
             %	showOptionsDialog: true => show frames and pixelRegion dialog
+            %   loadFileInfoOnly: true => do NOT load stack data
             
             % get path/to/file
             if ~exist('filepath', 'var') || isempty(filepath)
@@ -242,8 +238,8 @@ classdef ImageStack < handle
                 errordlg(['Zero image frames detected in ' file ext]);
                 return
             end
-            width = info(1).Width;
-            height = info(1).Height;
+            w = info(1).Width;
+            h = info(1).Height;
             bpp = info(1).BitDepth;
             color = info(1).ColorType;
             if color ~= "grayscale"
@@ -251,7 +247,7 @@ classdef ImageStack < handle
                     'Only grayscale intensity images are supported.'});
                 return
             end
-            fprintf('Loading %dx%dx%d@%d %s image %s...\n', width, height, nframes, bpp, color, [file ext]);
+            fprintf('Loading %dx%dx%d@%d %s image %s...\n', w, h, nframes, bpp, color, [file ext]);
             
             % options UI
             if exist('showOptionsDialog', 'var') && showOptionsDialog
@@ -262,7 +258,7 @@ classdef ImageStack < handle
                     defaults{end+1} = ['1:' num2str(nframes)];
                 end
                 labels{end+1} = 'Pixel Region (rows first:last, columns first:last), empty=full';
-                defaults{end+1} = ['1:' num2str(height) ', 1:' num2str(width)];
+                defaults{end+1} = ['1:' num2str(w) ', 1:' num2str(h)];
                 answer = inputdlg(labels, 'Load Image Stack Options', 1, defaults);
                 if ~isempty(answer)
                     if nframes > 1
@@ -332,7 +328,7 @@ classdef ImageStack < handle
             
             % pixel region to load
             if exist('pixelRegion', 'var') && ~isempty(pixelRegion)
-                if isequal(pixelRegion, {[1 height], [1 width]})
+                if isequal(pixelRegion, {[1 w], [1 h]})
                     pixelRegion = {}; % full frame
                 else
                     ... % check validity of pixelRegion
@@ -393,13 +389,18 @@ classdef ImageStack < handle
             
             obj.fileDataModified = false; % matches file at this point
             notify(obj, 'DataChanged');
-            obj.selectedFrameIndex = 1;
+%             obj.selectedFrameIndex = 1;
             disp('... Done.');
         end
-        
-        function reload(obj)
+        function reload(obj, showOptionsDialog, loadFileInfoOnly)
+            if ~exist('showOptionsDialog', 'var') || isempty(showOptionsDialog)
+                showOptionsDialog = false;
+            end
+            if ~exist('loadFileInfoOnly', 'var') || isempty(loadFileInfoOnly)
+                loadFileInfoOnly = false;
+            end
             if isempty(obj.fileInfo)
-                obj.load('', '', [], {}, true);
+                obj.load('', '', [], {}, showOptionsDialog, loadFileInfoOnly);
                 return
             end
             
@@ -414,7 +415,7 @@ classdef ImageStack < handle
             end
             
             if isfile(obj.fileInfo(1).Filename)
-                obj.load(obj.fileInfo(1).Filename, '', obj.fileFrames, obj.filePixelRegion, false);
+                obj.load(obj.fileInfo(1).Filename, '', obj.fileFrames, obj.filePixelRegion, showOptionsDialog, loadFileInfoOnly);
                 return
             end
             
@@ -436,9 +437,8 @@ classdef ImageStack < handle
                     return
                 end
             end
-            obj.load(fullfile(newpath, newfile), '', obj.fileFrames, obj.filePixelRegion, false);
+            obj.load(fullfile(newpath, newfile), '', obj.fileFrames, obj.filePixelRegion, showOptionsDialog, loadFileInfoOnly);
         end
-        
         function save(obj, filepath, prompt)
             %SAVE Save image stack to file
             
@@ -555,7 +555,6 @@ classdef ImageStack < handle
             catch
             end
         end
-        
         function newobj = zproject(obj, frames, method, previewImage)
             newobj = ImageStack;
             nframes = obj.numFrames;
@@ -680,8 +679,7 @@ classdef ImageStack < handle
                 colormap(previewAxes, cmap);
             end
         end
-        
-        function gaussFilter(obj, t, sigma, previewImage, applyToAllFrames)
+        function gaussFilter(obj, t, sigma, hPreviewImage, applyToAllFrames)
             if isempty(obj.data)
                 errordlg('Requires image data to be loaded.', 'Gaussian Filter');
                 return
@@ -694,11 +692,11 @@ classdef ImageStack < handle
             if ~exist('sigma', 'var')
                 sigma = [];
             end
-            if ~exist('previewImage', 'var')
-                previewImage = gobjects(0);
+            if ~exist('hPreviewImage', 'var')
+                hPreviewImage = gobjects(0);
             end
             frame = obj.getFrame(t);
-            [filteredFrame, sigma] = ImageOps.gaussFilterPreview(frame, sigma, previewImage);
+            [filteredFrame, sigma] = ImageOps.gaussFilterPreview(frame, sigma, hPreviewImage);
             if isempty(filteredFrame)
                 return
             end
@@ -729,8 +727,7 @@ classdef ImageStack < handle
             obj.fileDataModified = true;
             notify(obj, 'DataChanged');
         end
-        
-        function tophatFilter(obj, t, diskRadius, previewImage, applyToAllFrames)
+        function tophatFilter(obj, t, diskRadius, hPreviewImage, applyToAllFrames)
             if isempty(obj.data)
                 errordlg('Requires image data to be loaded.', 'Tophat Filter');
                 return
@@ -743,11 +740,14 @@ classdef ImageStack < handle
             if ~exist('diskRadius', 'var')
                 diskRadius = [];
             end
-            if ~exist('previewImage', 'var')
-                previewImage = gobjects(0);
+            if ~exist('hPreviewImage', 'var')
+                hPreviewImage = gobjects(0);
             end
             frame = obj.getFrame(t);
-            [filteredFrame, diskRadius] = ImageOps.tophatFilterPreview(frame, diskRadius, previewImage);
+            if isempty(frame)
+                return
+            end
+            [filteredFrame, diskRadius] = ImageOps.tophatFilterPreview(frame, diskRadius, hPreviewImage);
             if isempty(filteredFrame)
                 return
             end
@@ -777,11 +777,10 @@ classdef ImageStack < handle
                     close(wb);
                 end
             end
-            obj.dataModified = true;
+            obj.fileDataModified = true;
             notify(obj, 'DataChanged');
         end
-        
-        function newobj = threshold(obj, t, threshold, previewImage)
+        function newobj = threshold(obj, t, threshold, hPreviewImage)
             newobj = ImageStack;
             if isempty(obj.data)
                 errordlg('Requires image data to be loaded.', 'Threshold');
@@ -795,11 +794,11 @@ classdef ImageStack < handle
             if ~exist('threshold', 'var')
                 threshold = [];
             end
-            if ~exist('previewImage', 'var')
-                previewImage = gobjects(0);
+            if ~exist('hPreviewImage', 'var')
+                hPreviewImage = gobjects(0);
             end
             frame = obj.getFrame(t);
-            [mask, threshold] = ImageOps.thresholdPreview(frame, threshold, previewImage);
+            [mask, threshold] = ImageOps.thresholdPreview(frame, threshold, hPreviewImage);
             if isempty(mask)
                 return
             end

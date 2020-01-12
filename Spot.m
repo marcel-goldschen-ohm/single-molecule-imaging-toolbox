@@ -6,8 +6,7 @@ classdef Spot < handle
     %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
     
     properties
-        % Parent channel.
-        channel = Channel.empty;
+        hChannel = Channel.empty; % parent channel
         
         % spot image location [x,y]
         % (1x2) x,y --> fixed location for all image frames
@@ -124,7 +123,7 @@ classdef Spot < handle
             obj.xy(:,1) = col;
         end
         
-        function [mask3d, rows, cols] = getMaskZProjection(obj, imstack)
+        function [mask3d, rows, cols] = getMaskZProjection(obj, hImageStack)
             mrows = size(obj.mask, 1);
             mcols = size(obj.mask, 2);
             rowmins = obj.row - ceil(mrows / 2) + 1;
@@ -139,7 +138,7 @@ classdef Spot < handle
             cols = colmin:colmax;
             nrows = numel(rows);
             ncols = numel(cols);
-            nframes = imstack.numFrames;
+            nframes = hImageStack.numFrames;
             if nrows == mrows && ncols == mcols
                 mask3d = repmat(obj.mask, 1, 1, nframes);
             else
@@ -153,56 +152,55 @@ classdef Spot < handle
                 end
             end
             % remove out of image bits
-            out = union(find(rows < 1), find(rows > imstack.height));
+            out = union(find(rows < 1), find(rows > hImageStack.height));
             if ~isempty(out)
                 rows(out) = [];
                 mask3d(out,:,:) = [];
             end
-            out = union(find(cols < 1), find(cols > imstack.width));
+            out = union(find(cols < 1), find(cols > hImageStack.width));
             if ~isempty(out)
                 cols(out) = [];
                 mask3d(:,out,:) = [];
             end
         end
         
-        function zproj = getZProjectionFromImageStack(obj, imstack)
+        function zproj = getZProjectionFromImageStack(obj, hImageStack)
             if isempty(obj.xy)
                 return
             end
-            if ~exist('imstack', 'var')
+            if ~exist('hImageStack', 'var')
                 try
-                    imstack = obj.channel.selectedProjectionImageStack;
+                    hImageStack = obj.hChannel.hProjectionImageStack;
                 catch
                     return
                 end
             end
-            if isempty(imstack) || isempty(imstack.data)
+            if isempty(hImageStack) || isempty(hImageStack.data)
                 return
             end
-            [mask3d, rows, cols] = obj.getMaskZProjection(imstack);
+            [mask3d, rows, cols] = obj.getMaskZProjection(hImageStack);
             zproj = reshape( ...
                 sum(sum( ...
-                    double(imstack.data(rows,cols,:)) .* mask3d ...
+                    double(hImageStack.data(rows,cols,:)) .* mask3d ...
                     , 1), 2) ./ sum(sum(mask3d, 1), 2) ...
                 , [], 1);
         end
-        
-        function updateZProjectionFromImageStack(obj, imstack)
+        function updateZProjectionFromImageStack(obj, hImageStack)
             if isempty(obj.xy)
                 return
             end
-            if ~exist('imstack', 'var')
+            if ~exist('hImageStack', 'var')
                 try
-                    imstack = obj.channel.selectedProjectionImageStack;
+                    hImageStack = obj.hChannel.hProjectionImageStack;
                 catch
                     return
                 end
             end
-            if isempty(imstack) || isempty(imstack.data)
+            if isempty(hImageStack) || isempty(hImageStack.data)
                 return
             end
-            obj.tsData.rawTime = imstack.frameIntervalSec;
-            obj.tsData.rawData = obj.getZProjectionFromImageStack(imstack);
+            obj.tsData.rawTime = hImageStack.frameIntervalSec;
+            obj.tsData.rawData = obj.getZProjectionFromImageStack(hImageStack);
             if isempty(obj.tsData.rawTime)
                 obj.tsData.timeUnits = 'frames';
             else
@@ -218,15 +216,15 @@ classdef Spot < handle
             y = obj.tsData.data;
             isMasked = obj.tsData.mask;
             % channel level options for resampling and filtering
-            if isempty(obj.channel)
+            if isempty(obj.hChannel)
                 return
             end
-            if obj.channel.spotTsSumEveryN > 1
-                N = obj.channel.spotTsSumEveryN;
+            if obj.hChannel.spotTsSumEveryN > 1
+                N = obj.hChannel.spotTsSumEveryN;
                 [x, y, isMasked] = TimeSeries.sumEveryN(N, x, y, isMasked);
             end
-            if obj.channel.spotTsApplyFilter && ~isempty(obj.channel.spotTsFilter)
-                y = filter(obj.channel.spotTsFilter, y);
+            if obj.hChannel.spotTsApplyFilter && ~isempty(obj.hChannel.spotTsFilter)
+                y = filter(obj.hChannel.spotTsFilter, y);
             end
         end
     end

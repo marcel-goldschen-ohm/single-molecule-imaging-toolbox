@@ -253,7 +253,7 @@ classdef ImageOps < handle
                     cdata = previewImage.CData;
                     previewAxes = previewImage.Parent;
                     cmap = colormap(previewAxes);
-                    colormap(previewAxes, gray(2));
+                    colormap(previewAxes, gray(2^16));
                 end
                 ok = false; % OK dialog button will set back to true
                 showPreview_();
@@ -302,7 +302,7 @@ classdef ImageOps < handle
                 if isempty(mask)
                     return
                 end
-                previewImage.CData = imadjust(uint8(mask));
+                previewImage.CData = imadjust(uint16(mask));
                 previewImage.XData = [1 size(mask, 2)];
                 previewImage.YData = [1 size(mask, 1)];
             end

@@ -1,149 +1,110 @@
 classdef ImageStackViewer < handle
     %IMAGESTACKVIEWER Image viewer with frame slider similar to ImageJ.
-    %   Auto-resizes to Parent container. Optionally specify Position
-    %   bounding box within Parent container.
+    %   Expects image stack data to be provided via the ImageStack class.
     %
     %	Created by Marcel Goldschen-Ohm
     %	<goldschen-ohm@utexas.edu, marcel.goldschen@gmail.com>
     
     properties
-        % ImageStack handle ref to image stack data.
-        imageStack = ImageStack.empty;
+        % image stack data
+        hImageStack = ImageStack.empty;
         
-        % Bounding box in which to arrange items within Parent.
-        % [] => fill Parent container.
-        Position = [];
+        % UI elements
+        hPanel
+        hAxes
+        hImage
+        hSlider
+        hTopText
+        hTopBtnsLeft
+        hTopBtnsRight
+        hZoomOutBtn
+        hContrastBtn
         
-        % Image axes. Created in constructor.
-        imageAxes = gobjects(0);
-        
-        % Image graphics object for displaying a frame of the image stsack
-        % in imageAxes. Created in constructor.
-        imageFrame = gobjects(0);
-        
-        % Slider for changing the displayed image frame. Created in
-        % constructor.
-        frameSlider = gobjects(0);
-        
-        % Text for displaying info about the image stack or cursor
-        % locaiton, etc. Created in constructor.
-        infoText = gobjects(0);
-        
-        % Optional list of buttons displayed to the left of infoText.
-        leftHeaderButtons = gobjects(0);
-        
-        % Optional list of buttons displayed to the right of infoText.
-        rightHeaderButtons = gobjects(0);
-        
-        % Zoom to show full image button.
-        zoomOutButton = gobjects(0);
-        
-        % Brightness/Contrast button.
-        brightnessContrastButton = gobjects(0);
-        
-        % Auto adjust brightness/contrast for each frame?
-        isAutoContrast = true;
-        
-        % Optional toolbar panel displayed above infoText.
-        toolbarPanel = gobjects(0);
+        % other
+        isAutoContrast = true
     end
     
     properties (Access = private)
-        % Calls resize() upon ancestor figure's SizeChanged events.
-        % Access via updateResizeListener() and removeResizeListener().
-        resizeListener = event.listener.empty;
-        
-        % other listeners
+        % listeners
         labelChangedListener = event.listener.empty;
         dataChangedListener = event.listener.empty;
     end
     
     properties (Dependent)
-        % Parent graphics object.
-        Parent
-        
-        % Visibility of all graphics objects.
-        Visible
+        Parent % hPanel.Parent
+        Position % hPanel.Position
+        Visible % hPanel.Visible
+        currentFrameIndex % from frame slider
+        currentFrameData
     end
     
     events
-        % Notify when setting imageStack property.
         ImageStackChanged
-        
-        % Notify after showFrame().
         FrameChanged
     end
     
     methods
         function obj = ImageStackViewer(parent)
             %IMAGESTACKVIEWER Constructor
-            lh = 20;
             
-            % Requires a parent graphics object. Will resize itself to its
-            % parent when the containing figure is resized. If parent is
-            % not given, attach this object to a newly created figure.
-            if ~exist('parent', 'var') || ~isgraphics(parent)
-                parent = figure();
-                addToolbarExplorationButtons(parent); % old style
+            % main panel will hold all other UI elements
+            obj.hPanel = uipanel( ...
+                'BorderType', 'none', ...
+                'AutoResizeChildren', 'off', ... % will be handeld by resize()
+                'UserData', obj ... % ref this object
+                );
+            if exist('parent', 'var') && ~isempty(parent) && isvalid(parent) && isgraphics(parent)
+                obj.hPanel.Parent = parent;
             end
             
             % image axes and image
-            obj.imageAxes = axes(parent, ...
+            obj.hAxes = axes(obj.hPanel, ...
                 'Units', 'pixels', ...
                 'XTick', [], 'YTick', [], ...
                 'YDir', 'reverse');
-            ax = obj.imageAxes;
-            ax.Toolbar.Visible = 'off';
-            ax.Interactions = []; %[regionZoomInteraction('Dimensions', 'xy') panInteraction('Dimensions', 'xy')];
-            box(ax, 'on');
-            hold(ax, 'on');
-            obj.imageFrame = imagesc(ax, [], ...
+            obj.hAxes.Toolbar.Visible = 'off';
+            obj.hAxes.Interactions = []; %[regionZoomInteraction('Dimensions', 'xy') panInteraction('Dimensions', 'xy')];
+            box(obj.hAxes, 'on');
+            hold(obj.hAxes, 'on');
+            obj.hImage = imagesc(obj.hAxes, [], ...
                 'HitTest', 'off', ...
                 'PickableParts', 'none');
-            axis(ax, 'image');
-            set(ax, 'ButtonDownFcn', @obj.imageAxesButtonDown);
-            colormap(ax, gray(2^16));
+            axis(obj.hAxes, 'image');
+%             set(obj.hAxes, 'ButtonDownFcn', @obj.imageAxesButtonDown);
+            colormap(obj.hAxes, gray(2^16));
             
             % frame slider
-            obj.frameSlider = uicontrol(parent, 'Style', 'slider', ...
+            obj.hSlider = uicontrol(obj.hPanel, 'Style', 'slider', ...
                 'Min', 1, 'Max', 1, 'Value', 1, ...
                 'SliderStep', [1 1], ... % [1/nframes 1/nframes]
                 'Units', 'pixels', ...
                 'Visible', 'off');
-            addlistener(obj.frameSlider, 'Value', 'PostSet', @(varargin) obj.frameSliderMoved());
+            addlistener(obj.hSlider, 'Value', 'PostSet', @(varargin) obj.sliderMoved());
             
-            % info text
-            obj.infoText = uicontrol(parent, 'Style', 'text', ...
+            % top bar & buttons
+            obj.hTopText = uicontrol(obj.hPanel, 'Style', 'text', ...
                 'HorizontalAlignment', 'left');
-            
-            % buttons
-            obj.zoomOutButton = uicontrol(parent, 'style', 'pushbutton', ...
-                'String', char(hex2dec('2922')), 'Position', [0 0 lh lh], ...
+            obj.hZoomOutBtn = uicontrol(obj.hPanel, 'style', 'pushbutton', ...
+                'String', char(hex2dec('2922')), ...
                 'Tooltip', 'Show Full Image', ...
                 'Callback', @(varargin) obj.zoomOutFullImage());
-            obj.brightnessContrastButton = uicontrol(parent, 'style', 'pushbutton', ...
-                'String', char(hex2dec('25d0')), 'Position', [0 0 lh lh], ...
+            obj.hContrastBtn = uicontrol(obj.hPanel, 'style', 'pushbutton', ...
+                'String', char(hex2dec('25d0')), ...
                 'Tooltip', 'Brightness/Contrast', ...
-                'Callback', @(varargin) obj.brightnessContrastButtonDown());
-            obj.rightHeaderButtons = [obj.brightnessContrastButton obj.zoomOutButton];
+                'Callback', @(varargin) obj.contrastBtnDown());
+            obj.hTopBtnsRight = [obj.hContrastBtn obj.hZoomOutBtn];
             
-            obj.resize();
-            obj.updateResizeListener();
+            % make sure we have a valid image stack
+            obj.hImageStack = ImageStack();
+
+            % layout
+            obj.hPanel.SizeChangedFcn = @(varargin) obj.resize();
+            %obj.resize(); % called when setting image stack
         end
-        
         function delete(obj)
-            %DELETE Delete all graphics object properties and listeners.
+            %DELETE Delete all graphics objects and listeners.
             obj.deleteListeners();
-            obj.removeResizeListener();
-            h = [ ...
-                obj.imageAxes ...
-                obj.frameSlider ...
-                obj.infoText ...
-                obj.leftHeaderButtons ...
-                obj.rightHeaderButtons ...
-                obj.toolbarPanel ...
-                ];
-            delete(h(isgraphics(h)));
+            delete(obj.hPanel); % will delete all other child graphics objects
         end
         
         function deleteListeners(obj)
@@ -156,484 +117,233 @@ classdef ImageStackViewer < handle
                 obj.dataChangedListener = event.listener.empty;
             end
         end
-        
         function updateListeners(obj)
             obj.deleteListeners();
-            if isempty(obj.imageStack)
+            if isempty(obj.hImageStack)
                 return
             end
             obj.labelChangedListener = ...
-                addlistener(obj.imageStack, 'LabelChanged', @(varargin) obj.updateInfoText());
+                addlistener(obj.hImageStack, 'LabelChanged', @(varargin) obj.updateTopText());
             obj.dataChangedListener = ...
-                addlistener(obj.imageStack, 'DataChanged', @(varargin) obj.showFrame());
+                addlistener(obj.hImageStack, 'DataChanged', @(varargin) obj.showFrame());
         end
         
-        function parent = get.Parent(obj)
-            % Get parent of graphics object properties.
-            parent = obj.imageAxes.Parent;
-        end
-        
-        function set.Parent(obj, parent)
-            % Set parent of graphics object properties and resize to fit.
-            obj.imageAxes.Parent = parent;
-            obj.frameSlider.Parent = parent;
-            obj.infoText.Parent = parent;
-            if ~isempty(obj.leftHeaderButtons)
-                [obj.leftHeaderButtons.Parent] = deal(parent);
+        function set.hImageStack(obj, h)
+            % MUST always have a valid image stack handle
+            if isempty(h) || ~isvalid(h)
+                h = ImageStack();
             end
-            if ~isempty(obj.rightHeaderButtons)
-                [obj.rightHeaderButtons.Parent] = deal(parent);
-            end
-            if isgraphics(obj.toolbarPanel)
-                obj.toolbarPanel.Parent = parent;
-            end
-            obj.resize();
-            obj.updateResizeListener();
-        end
-        
-        function visible = get.Visible(obj)
-            % Get visibility of all graphics obejct properties.
-            visible = obj.imageAxes.Visible;
-        end
-        
-        function set.Visible(obj, visible)
-            % Set visibility of all graphics obejct properties.
-            obj.imageAxes.Visible = visible;
-            if ~isempty(obj.imageAxes.Children)
-                [obj.imageAxes.Children.Visible] = deal(visible);
-            end
-            if isempty(obj.imageStack) || obj.imageStack.numFrames() <= 1
-                obj.frameSlider.Visible = 'off';
-            else
-                obj.frameSlider.Visible = visible;
-            end
-            obj.infoText.Visible = visible;
-            if ~isempty(obj.leftHeaderButtons)
-                [obj.leftHeaderButtons.Visible] = deal(visible);
-            end
-            if ~isempty(obj.rightHeaderButtons)
-                [obj.rightHeaderButtons.Visible] = deal(visible);
-            end
-            if isgraphics(obj.toolbarPanel)
-                obj.toolbarPanel.Visible = visible;
-            end
-        end
-        
-        function set.Position(obj, position)
-            % Set position within Parent container and resize to fit.
-            obj.Position = position;
-            obj.resize();
-        end
-        
-        function set.imageStack(obj, imageStack)
-            % MUST always have a valid image stack handle.
-            if isempty(imageStack)
-                imageStack = ImageStack;
-            end
-            % Set handle to the displayed image stack. This updates
-            % everything including the displayed image and frame slider.
-            zoomOut = isempty(obj.imageStack) || isempty(obj.imageStack.data) || ~obj.isZoomed();
-            obj.imageStack = imageStack;
-            nframes = obj.imageStack.numFrames;
-            if nframes > 1 && obj.Visible == "on"
-                obj.frameSlider.Visible = 'on';
-                obj.frameSlider.Min = 1;
-                obj.frameSlider.Max = nframes;
-                obj.frameSlider.Value = max(1, min(obj.imageStack.selectedFrameIndex, nframes));
-                obj.frameSlider.SliderStep = [1./nframes 1./nframes];
-            else
-                obj.frameSlider.Visible = 'off';
-            end
-            obj.showFrame();
-            if zoomOut
+            % if we are currently zoomed, stay zoomed, otherwise show all
+            % of new image
+            showFullNewImage = isempty(obj.hImageStack) || ~obj.isZoomed();
+            obj.hImageStack = h;
+            obj.showFrame(1);
+            if showFullNewImage
                 obj.zoomOutFullImage();
             end
-            obj.resize(); % reposition slider and info text relative to image
+            % update slider
+            nframes = obj.hImageStack.numFrames;
+            if nframes > 1
+                obj.hSlider.Visible = 'on';
+                obj.hSlider.Min = 1;
+                obj.hSlider.Max = nframes;
+                obj.hSlider.Value = max(1, min(obj.hSlider.Value, nframes));
+                obj.hSlider.SliderStep = [1./nframes 1./nframes];
+            else
+                obj.hSlider.Visible = 'off';
+            end
+            obj.resize(); % update layout for new image size
             obj.updateListeners();
             notify(obj, 'ImageStackChanged');
         end
+        function setImageStack(obj, h)
+            obj.hImageStack = h;
+        end
         
-        function refresh(obj)
-            %REFRESH Update everything by resetting the image stack handle.
-            obj.imageStack = obj.imageStack;
+        function h = get.Parent(obj)
+            h = obj.hPanel.Parent;
+        end
+        function set.Parent(obj, h)
+            obj.hPanel.Parent = h;
+        end
+        function bbox = get.Position(obj)
+            bbox = obj.hPanel.Position;
+        end
+        function set.Position(obj, bbox)
+            obj.hPanel.Position = bbox;
+            obj.resize();
+        end
+        function vis = get.Visible(obj)
+            vis = obj.hPanel.Visible;
+        end
+        function set.Visible(obj, vis)
+            obj.hPanel.Visible = vis;
+        end
+        
+        function idx = get.currentFrameIndex(obj)
+            idx = max(0, min(obj.hSlider.Value, obj.hImageStack.numFrames));
+        end
+        function frame = get.currentFrameData(obj)
+            try
+                t = obj.currentFrameIndex;
+                frame = obj.hImageStack.data(:,:,t);
+            catch
+                frame = [];
+            end
         end
         
         function resize(obj)
-            %RESIZE Reposition all graphics objects within Parent.
+            %RESIZE Reposition all graphics objects within hPanel.
             
-            % Get bounding box [x y w h] within Parent in which to display
-            % all graphics objects.
-            lh = 20;
+            % reposition image axes within panel
+            bbox = getpixelposition(obj.hPanel);
             margin = 2;
-            parentUnits = obj.Parent.Units;
-            obj.Parent.Units = 'pixels';
-            try
-                % use Position as bounding box within Parent container
-                x = obj.Position(1);
-                y = obj.Position(2);
-                w = obj.Position(3);
-                h = obj.Position(4);
-                if w <= 1 && x <= 1
-                    % normalized in horizontal
-                    pw = obj.Parent.Position(3);
-                    x = max(margin, min(x * pw, pw - 2 * margin));
-                    w = max(margin, min(w * pw, pw - x - margin));
-                end
-                if h <= 1 && y <= 1
-                    % normalized in vertical
-                    ph = obj.Parent.Position(4);
-                    y = max(margin, min(y * ph, ph - 2 * margin));
-                    h = max(margin, min(h * ph, ph - y - margin));
-                end
-            catch
-                % fill Parent container
-                x = margin;
-                y = margin;
-                w = obj.Parent.Position(3) - 2 * margin;
-                h = obj.Parent.Position(4) - 2 * margin;
+            lineh = 20;
+            x = margin;
+            y = margin + lineh + margin;
+            w = bbox(3) - margin - x;
+            h = bbox(4) - margin - lineh - margin - y;
+            if ~isempty(obj.hAxes.YLabel.String)
+                x = x + lineh;
+                w = w - lineh;
             end
-            obj.Parent.Units = parentUnits;
+            obj.hAxes.Position = [x y w h];
+            % get actual displayed image axes position.
+            pos = Utilities.plotboxpos(obj.hAxes);
+            x = pos(1); y = pos(2); w = pos(3); h = pos(4);
             
-            % Position image axes.
-            obj.imageAxes.Position = [x y+lh+margin w max(1,h-2*lh-2*margin)];
-            if isgraphics(obj.toolbarPanel)
-                obj.imageAxes.Position(4) = obj.imageAxes.Position(4) - lh - margin;
-            end
-            if ~isempty(obj.imageAxes.YLabel.String)
-                obj.imageAxes.Position(1) = obj.imageAxes.Position(1) + lh + margin;
-                obj.imageAxes.Position(3) = obj.imageAxes.Position(3) - lh - margin;
-            end
+            % slider below image
+            obj.hSlider.Position = [x y-margin-lineh w lineh];
             
-            % Get actual displayed image axes position.
-            pos = ImageStackViewer.plotboxpos(obj.imageAxes);
-            
-            % Position all other graphics objects around the image axes.
-            
-            % frame slider
-            obj.frameSlider.Position = [pos(1) pos(2)-margin-lh pos(3) lh];
-            
-            % header info text and left and right header buttons
-            wl = 0;
-            wr = 0;
-            if ~isempty(obj.leftHeaderButtons)
-                wl = margin + sum(horzcat(obj.leftHeaderButtons.Position(3)));
+            % top bar text & buttons above image
+            by = y + h + margin;
+            lx = x;
+            for i = 1:numel(obj.hTopBtnsLeft)
+                obj.hTopBtnsLeft(i).Position = [lx by lineh lineh];
+                lx = lx + lineh;
             end
-            if ~isempty(obj.rightHeaderButtons)
-                wr = margin;
-                for button = obj.rightHeaderButtons
-                    wr = wr + button.Position(3);
-                end
+            rx = x + w;
+            for i = numel(obj.hTopBtnsRight):-1:1
+                rx = rx - lineh;
+                obj.hTopBtnsRight(i).Position = [rx by lineh lineh];
             end
-            obj.infoText.Position = [pos(1)+wl pos(2)+pos(4)+margin pos(3)-wl-wr lh];
-            if wl
-                bx = pos(1);
-                by = pos(2) + pos(4) + margin;
-                for btn = obj.leftHeaderButtons
-                    btn.Position = [bx by btn.Position(3) lh];
-                    bx = bx + btn.Position(3);
-                end
-            end
-            if wr
-                bx = pos(1) + pos(3) - wr + margin;
-                by = pos(2) + pos(4) + margin;
-                for btn = obj.rightHeaderButtons
-                    btn.Position = [bx by btn.Position(3) lh];
-                    bx = bx + btn.Position(3);
-                end
-            end
-            
-            % toolbar above header
-            if isgraphics(obj.toolbarPanel)
-                obj.toolbarPanel.Position = [pos(1) pos(2)+pos(4)+margin+lh pos(3) lh];
-            end
+            obj.hTopText.Position = [lx by rx-lx lineh];
         end
-        
-        function updateResizeListener(obj)
-            %UPDATERESIZELISTENER Automatically resize to Parent.
-            %   Call resize() on ancestor figure's SizeChanged events.
-            if ~isempty(obj.resizeListener) && isvalid(obj.resizeListener)
-                delete(obj.resizeListener);
-            end
-            obj.resizeListener = ...
-                addlistener(ancestor(obj.Parent, 'Figure'), ...
-                'SizeChanged', @(varargin) obj.resize());
-        end
-        
-        function removeResizeListener(obj)
-            %REMOVERESIZELISTENER Do NOT automatically resize to Parent.
-            if ~isempty(obj.resizeListener) && isvalid(obj.resizeListener)
-                delete(obj.resizeListener);
-            end
-            obj.resizeListener = event.listener.empty;
-        end
-        
-        function frameSliderMoved(obj)
-            %FRAMESLIDERMOVED Handle frame slider move event.
-            %   Update displayed image frame and frame info text.
-            t = uint32(round(obj.frameSlider.Value));
-            t = max(obj.frameSlider.Min, min(t, obj.frameSlider.Max));
-            obj.showFrame(t);
+        function refresh(obj)
+            %REFRESH Update everything by resetting the image stack handle.
+            obj.hImageStack = obj.hImageStack;
         end
         
         function showFrame(obj, t)
             %SHOWFRAME Display frame t.
-            if ~exist('t', 'var') || isempty(t)
-                t = obj.imageStack.selectedFrameIndex;
+            if ~exist('t', 'var')
+                t = obj.currentFrameIndex;
             end
             try
-                frame = obj.imageStack.getFrame(t);
+                frame = obj.hImageStack.getFrame(t);
             catch
                 frame = [];
             end
             if isempty(frame)
-                obj.imageFrame.CData = [];
-                obj.imageFrame.XData = [];
-                obj.imageFrame.YData = [];
+                obj.hImage.CData = [];
+                obj.hImage.XData = [];
+                obj.hImage.YData = [];
             else
                 if obj.isAutoContrast
-                    obj.imageAxes.CLim = [0 2^16-1];
-                    obj.imageFrame.CData = imadjust(uint16(frame));
+                    obj.hAxes.CLim = [0 2^16-1];
+                    obj.hImage.CData = imadjust(uint16(frame));
                 else
-                    obj.imageFrame.CData = frame;
+                    obj.hImage.CData = frame;
                 end
-                obj.imageFrame.XData = [1 size(frame, 2)];
-                obj.imageFrame.YData = [1 size(frame, 1)];
-                if obj.imageStack.numFrames > 1
-                    obj.frameSlider.Value = t;
-                    if obj.imageStack.selectedFrameIndex ~= t
-                        obj.imageStack.selectedFrameIndex = t;
-                    end
+                obj.hImage.XData = [1 size(frame, 2)];
+                obj.hImage.YData = [1 size(frame, 1)];
+                if obj.hImageStack.numFrames > 1
+                    obj.hSlider.Value = t;
                 end
             end
-            obj.updateInfoText();
+            obj.updateTopText();
+            notify(obj, 'FrameChanged');
         end
         
-        function updateInfoText(obj)
+        function sliderMoved(obj)
+            %FRAMESLIDERMOVED Handle slider movement event.
+            %   Update displayed image frame and frame info text.
+            t = uint32(round(obj.hSlider.Value));
+            t = max(obj.hSlider.Min, min(t, obj.hSlider.Max));
+            obj.showFrame(t);
+        end
+        
+        function updateTopText(obj)
             %UPDATEINFOTEXT Show image stack and frame info above image.
-            if isempty(obj.imageFrame.CData)
-                obj.infoText.String = '';
+            if isempty(obj.hImage.CData)
+                str = '';
             else
-                w = size(obj.imageFrame.CData,2);
-                h = size(obj.imageFrame.CData,1);
-                nframes = obj.imageStack.numFrames();
+                w = size(obj.hImage.CData,2);
+                h = size(obj.hImage.CData,1);
+                nframes = obj.hImageStack.numFrames;
                 if nframes > 1
-                    t = obj.frameSlider.Value;
-                    obj.infoText.String = sprintf('%d/%d (%dx%d)', t, nframes, w, h);
+                    t = obj.hSlider.Value;
+                    str = sprintf('%d/%d (%dx%d)', t, nframes, w, h);
                 else
-                    obj.infoText.String = sprintf('(%dx%d)', w, h);
+                    str = sprintf('(%dx%d)', w, h);
                 end
             end
-            if ~isempty(obj.imageStack.label)
-                obj.infoText.String = [obj.infoText.String ' ' char(obj.imageStack.label)];
+            if ~isempty(obj.hImageStack.label)
+                str = [str ' ' char(obj.hImageStack.label)];
             end
-        end
-        
-        function tf = isZoomed(obj)
-            %ISZOOMED Return zoom status for image axes.
-            tf = ImageStackViewer.isAxesZoomed(obj.imageAxes);
+            obj.hTopText.String = str;
         end
         
         function zoomOutFullImage(obj)
-            %ZOOMOUTFULLIMAGE Autoscale to show full image.
-            if ~isempty(obj.imageFrame.CData)
-                obj.imageFrame.XData = [1 size(obj.imageFrame.CData,2)];
-                obj.imageFrame.YData = [1 size(obj.imageFrame.CData,1)];
-                obj.imageAxes.XLim = [0.5, obj.imageFrame.XData(end)+0.5];
-                obj.imageAxes.YLim = [0.5, obj.imageFrame.YData(end)+0.5];
+            %ZOOMOUTFULLIMAGE Zoom out to show full image.
+            if ~isempty(obj.hImage.CData)
+                obj.hImage.XData = [1 size(obj.hImage.CData,2)];
+                obj.hImage.YData = [1 size(obj.hImage.CData,1)];
+                obj.hAxes.XLim = [0.5, obj.hImage.XData(end)+0.5];
+                obj.hAxes.YLim = [0.5, obj.hImage.YData(end)+0.5];
             end
         end
+        function tf = isZoomed(obj)
+            %ISZOOMED Return zoom status for image axes.
+            tf = Utilities.isAxesZoomed(obj.hAxes);
+        end
         
-        function brightnessContrastButtonDown(obj)
+        function set.isAutoContrast(obj, tf)
+            obj.isAutoContrast = tf;
+            obj.showFrame(obj.currentFrameIndex);
+        end
+        function contrastBtnDown(obj)
             menu = uicontextmenu;
-            uimenu(menu, 'Label', 'Auto', ...
+            uimenu(menu, 'Label', 'Auto Contrast', ...
                 'Checked', obj.isAutoContrast, ...
                 'Callback', @(varargin) obj.toggleAutoContrast());
-            uimenu(menu, 'Label', ['Set (' num2str(obj.imageAxes.CLim) ')'], ...
+            uimenu(menu, 'Label', ['Set Window (' num2str(obj.hAxes.CLim) ')'], ...
                 'Separator', 'on', ...
-                'Callback', @(varargin) obj.editBrightnessContrast());
+                'Callback', @(varargin) obj.editContrast());
             
-            fig = ancestor(obj.Parent, 'Figure');
+            fig = ancestor(obj.hPanel, 'Figure');
             menu.Parent = fig;
-            menu.Position(1:2) = obj.brightnessContrastButton.Position(1:2);
+            pos = Utilities.getPixelPositionInAncestor(obj.hContrastBtn, hFig);
+            menu.Position(1:2) = pos(1:2);
             menu.Visible = 1;
         end
-        
         function toggleAutoContrast(obj)
             obj.isAutoContrast = ~obj.isAutoContrast;
-            obj.showFrame();
         end
-        
-        function editBrightnessContrast(obj)
+        function editContrast(obj)
             obj.isAutoContrast = false;
-            obj.showFrame();
-            htool = imcontrast(obj.imageFrame);
+            imcontrast(obj.hImage);
         end
         
-        function imageAxesButtonDown(obj, src, event)
-            %IMAGEAXESBUTTONDOWN Handle button press in image axes.
-            x = event.IntersectionPoint(1);
-            y = event.IntersectionPoint(2);
-            if event.Button == 1 % lefts
-            elseif event.Button == 2 % middle
-            elseif event.Button == 3 % right
-            end
-        end
-    end
-    
-    methods (Static)
-        % https://github.com/kakearney/plotboxpos-pkg
-        % copied here for convenience, otherwise install via Add-On Explorer
-        function pos = plotboxpos(h)
-            %PLOTBOXPOS Returns the position of the plotted axis region
-            %
-            % pos = plotboxpos(h)
-            %
-            % This function returns the position of the plotted region of an axis,
-            % which may differ from the actual axis position, depending on the axis
-            % limits, data aspect ratio, and plot box aspect ratio.  The position is
-            % returned in the same units as the those used to define the axis itself.
-            % This function can only be used for a 2D plot.  
-            %
-            % Input variables:
-            %
-            %   h:      axis handle of a 2D axis (if ommitted, current axis is used).
-            %
-            % Output variables:
-            %
-            %   pos:    four-element position vector, in same units as h
-
-            % Copyright 2010 Kelly Kearney
-
-            % Check input
-
-            if nargin < 1
-                h = gca;
-            end
-
-            if ~ishandle(h) || ~strcmp(get(h,'type'), 'axes')
-                error('Input must be an axis handle');
-            end
-
-            % Get position of axis in pixels
-
-            currunit = get(h, 'units');
-            set(h, 'units', 'pixels');
-            axisPos = get(h, 'Position');
-            set(h, 'Units', currunit);
-
-            % Calculate box position based axis limits and aspect ratios
-
-            darismanual  = strcmpi(get(h, 'DataAspectRatioMode'),    'manual');
-            pbarismanual = strcmpi(get(h, 'PlotBoxAspectRatioMode'), 'manual');
-
-            if ~darismanual && ~pbarismanual
-
-                pos = axisPos;
-
-            else
-
-                xlim = get(h, 'XLim');
-                ylim = get(h, 'YLim');
-
-                % Deal with axis limits auto-set via Inf/-Inf use
-
-                if any(isinf([xlim ylim]))
-                    hc = get(h, 'Children');
-                    hc(~arrayfun( @(h) isprop(h, 'XData' ) & isprop(h, 'YData' ), hc)) = [];
-                    xdata = get(hc, 'XData');
-                    if iscell(xdata)
-                        xdata = cellfun(@(x) x(:), xdata, 'uni', 0);
-                        xdata = cat(1, xdata{:});
-                    end
-                    ydata = get(hc, 'YData');
-                    if iscell(ydata)
-                        ydata = cellfun(@(x) x(:), ydata, 'uni', 0);
-                        ydata = cat(1, ydata{:});
-                    end
-                    isplotted = ~isinf(xdata) & ~isnan(xdata) & ...
-                                ~isinf(ydata) & ~isnan(ydata);
-                    xdata = xdata(isplotted);
-                    ydata = ydata(isplotted);
-                    if isempty(xdata)
-                        xdata = [0 1];
-                    end
-                    if isempty(ydata)
-                        ydata = [0 1];
-                    end
-                    if isinf(xlim(1))
-                        xlim(1) = min(xdata);
-                    end
-                    if isinf(xlim(2))
-                        xlim(2) = max(xdata);
-                    end
-                    if isinf(ylim(1))
-                        ylim(1) = min(ydata);
-                    end
-                    if isinf(ylim(2))
-                        ylim(2) = max(ydata);
-                    end
-                end
-
-                dx = diff(xlim);
-                dy = diff(ylim);
-                dar = get(h, 'DataAspectRatio');
-                pbar = get(h, 'PlotBoxAspectRatio');
-
-                limDarRatio = (dx/dar(1))/(dy/dar(2));
-                pbarRatio = pbar(1)/pbar(2);
-                axisRatio = axisPos(3)/axisPos(4);
-
-                if darismanual
-                    if limDarRatio > axisRatio
-                        pos(1) = axisPos(1);
-                        pos(3) = axisPos(3);
-                        pos(4) = axisPos(3)/limDarRatio;
-                        pos(2) = (axisPos(4) - pos(4))/2 + axisPos(2);
-                    else
-                        pos(2) = axisPos(2);
-                        pos(4) = axisPos(4);
-                        pos(3) = axisPos(4) * limDarRatio;
-                        pos(1) = (axisPos(3) - pos(3))/2 + axisPos(1);
-                    end
-                elseif pbarismanual
-                    if pbarRatio > axisRatio
-                        pos(1) = axisPos(1);
-                        pos(3) = axisPos(3);
-                        pos(4) = axisPos(3)/pbarRatio;
-                        pos(2) = (axisPos(4) - pos(4))/2 + axisPos(2);
-                    else
-                        pos(2) = axisPos(2);
-                        pos(4) = axisPos(4);
-                        pos(3) = axisPos(4) * pbarRatio;
-                        pos(1) = (axisPos(3) - pos(3))/2 + axisPos(1);
-                    end
-                end
-            end
-
-            % Convert plot box position to the units used by the axis
-
-            hparent = get(h, 'parent');
-            hfig = ancestor(hparent, 'figure'); % in case in panel or similar
-            currax = get(hfig, 'currentaxes');
-
-            temp = axes('Units', 'Pixels', 'Position', pos, 'Visible', 'off', 'parent', hparent);
-            set(temp, 'Units', currunit);
-            pos = get(temp, 'position');
-            delete(temp);
-
-            set(hfig, 'currentaxes', currax);
-        end
-        
-        function tf = isAxesZoomed(ax)
-            %ISAXESZOOMED Return zoom status for axes ax.
-            unzoomed = getappdata(ax, 'matlab_graphics_resetplotview');
-            if isempty(unzoomed) ...
-                    || (isequal(ax.XLim, unzoomed.XLim) && isequal(ax.YLim, unzoomed.YLim))
-               tf = false;
-            else
-               tf = true;
-            end
-        end
+%         function imageAxesButtonDown(obj, src, event)
+%             %IMAGEAXESBUTTONDOWN Handle button press in image axes.
+%             x = event.IntersectionPoint(1);
+%             y = event.IntersectionPoint(2);
+%             if event.Button == 1 % lefts
+%             elseif event.Button == 2 % middle
+%             elseif event.Button == 3 % right
+%             end
+%         end
     end
 end
 

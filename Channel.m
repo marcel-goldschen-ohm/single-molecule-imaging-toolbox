@@ -1,73 +1,38 @@
 classdef Channel < handle
-    %CHANNEL Summary of this class goes here
-    %   Detailed explanation goes here
+    %CHANNEL Collection of images (stacks) and associated spots.
+    %   Images may also be aligned to images in another channel.
     
     properties
-        % DATA PROPERTIES
-        
-        % Parent experiment.
-        experiment = Experiment.empty;
-        
-        % Channel label.
+        hExperiment = Experiment.empty; % parent experiment
         label = "Channel";
         
-        % Row vector of 2D images or 3D image stacks.
-        % e.g. main image stack, spot mask image, alignment image, etc.
-        images = ImageStack.empty(1,0);
+        hImages = ImageStack.empty(1,0); % row vector of image (stacks)
+        hProjectionImageStack = ImageStack.empty;
         
-        % Column vector of spots.
-        spots = Spot.empty(0,1);
+        hSpots = Spot.empty(0,1); % column vector of spots
+        hSelectedSpot = Spot.empty;
+        autoSelectMappedSpotsInSiblingChannels = true;
         
-        % Map this channel onto another channel.
-        alignedToChannel = Channel.empty;
-        alignment = ImageRegistration.empty; % Transforms this obj onto alignedToChannel.
+        hAlignedToChannel = Channel.empty; % map obj onto hAlignedToChannel
+        alignmentTransform = []; % transforms obj --> hAlignedToChannel, e.g. affine2d
         
-        % STATE PROPERTIES
-        
-        % Selected image. Should reference one of the channel's images.
-        selectedImage = ImageStack.empty;
-        
-        % Selected spot. Either should reference one of the channel's
-        % spots, or else it will reflect the user's last click position
-        % within the image axes.
-        selectedSpot = Spot.empty;
-        
-        % If true, setting selectedSpot in this channel will automatically
-        % set the selectedSpot in all other channels in the parent
-        % experiment to their mapped spots or locations.
-        autoSelectMappedSpotsInOtherChannels = true;
-        
-        % Image stack to use for spot projections. Should reference one of
-        % the channel's images.
-        selectedProjectionImageStack = ImageStack.empty;
-        
-        % Handle to channel whose image should be visually overlaid.
-        overlayChannel = Channel.empty;
+        hOverlayChannel = Channel.empty; % overlay another channel (view only)
         overlayColorChannels = [2 1 2]; % green-magenta
         
-        % Spot time series options.
+        % spot time series options
         spotTsSumEveryN = 1; % e.g. simulate longer exposures
         spotTsFilter = digitalFilter.empty;
         spotTsApplyFilter = false;
     end
     
-    properties (Dependent)
-        % Selected frame of selectedImage.
-        selectedImageFrame
-        
-        % selectedSpot if it's in spots, otherwise spots(1) if it exists.
-        querySpot
-    end
-    
     events
         LabelChanged
         ImagesChanged
+        ProjectionImageStackChanged
         SpotsChanged
-        AlignmentChanged
-        SelectedImageChanged
         SelectedSpotChanged
-        SelectedProjectionImageStackChanged
-        OverlayChannelChanged
+        AlignmentChanged
+        OverlayChanged
     end
     
     methods
@@ -76,26 +41,33 @@ classdef Channel < handle
         end
         
         function delete(obj)
-            for channel = obj.getOtherChannels()
-                if isequal(channel.alignedToChannel, obj)
-                    channel.alignedToChannel = Channel.empty;
-                end
-                if isequal(channel.overlayChannel, obj)
-                    channel.overlayChannel = Channel.empty;
+            % If any other channels in the parent experiment refer to this
+            % channel (e.g. alignment), remove the refs.
+            hSiblingChannels = obj.getSiblingChannels();
+            if ~isempty(hSiblingChannels)
+                for hSiblingChannel = hSiblingChannels
+                    if isvalid(hSiblingChannel)
+                        if isequal(hSiblingChannel.hAlignedToChannel, obj)
+                            hSiblingChannel.hAlignedToChannel = Channel.empty;
+                        end
+                        if isequal(hSiblingChannel.hOverlayChannel, obj)
+                            hSiblingChannel.hOverlayChannel = Channel.empty;
+                        end
+                    end
                 end
             end
         end
         
-        function set.experiment(obj, h)
-            obj.experiment = h;
+        function set.hExperiment(obj, h)
+            obj.hExperiment = h;
             % make sure parent experiment's list of channels contains obj
-            if ~isempty(obj.experiment) && ~any(obj.experiment.channels == obj)
-                obj.experiment.channels = [obj.experiment.channels obj];
+            if ~isempty(obj.hExperiment) && ~any(obj.hExperiment.hChannels == obj)
+                obj.hExperiment.hChannels = [obj.hExperiment.hChannels obj];
             end
         end
         
-        function set.label(obj, label)
-            obj.label = string(label);
+        function set.label(obj, str)
+            obj.label = string(str);
             notify(obj, 'LabelChanged');
         end
         function editLabel(obj)
@@ -106,165 +78,251 @@ classdef Channel < handle
             obj.label = string(answer{1});
         end
         
-        function set.images(obj, images)
-            obj.images = images;
+        function set.hImages(obj, h)
+            obj.hImages = h;
             notify(obj, 'ImagesChanged');
-            if isempty(obj.selectedImage) && ~isempty(obj.images)
-                obj.selectedImage = obj.images(1);
-            end
-            if isempty(obj.selectedProjectionImageStack) && ~isempty(obj.images)
+%             if isempty(obj.selectedImage) && ~isempty(obj.images)
+%                 obj.selectedImage = obj.images(1);
+%             end
+            % update projection image stack
+            if isempty(obj.hImages)
+                obj.hProjectionImageStack = ImageStack.empty;
+            elseif isempty(obj.hProjectionImageStack) || ~any(obj.hImages == obj.hProjectionImageStack)
                 obj.selectFirstValidProjectionImageStack();
             end
-%             % resetting these makes sure they remain valid
-%             obj.selectedImage = obj.selectedImage;
-%             obj.selectedProjectionImageStack = obj.selectedProjectionImageStack;
+% %             % resetting these makes sure they remain valid
+% %             obj.selectedImage = obj.selectedImage;
+% %             obj.selectedProjectionImageStack = obj.selectedProjectionImageStack;
+        end
+        function set.hProjectionImageStack(obj, h)
+            obj.hProjectionImageStack = h;
+            notify(obj, 'ProjectionImageStackChanged');
+        end
+        function setProjectionImageStack(obj, h)
+            obj.hProjectionImageStack = h;
+        end
+        function selectFirstValidProjectionImageStack(obj)
+            if isempty(obj.hImages)
+                obj.hProjectionImageStack = ImageStack.empty;
+                return
+            end
+            for hImage = obj.hImages
+                if hImage.numFrames > 1
+                    obj.hProjectionImageStack = hImage;
+                    return
+                end
+            end
+            obj.hProjectionImageStack = ImageStack.empty;
         end
         
-        function set.spots(obj, spots)
-            obj.spots = spots;
-            if ~isempty(obj.spots)
-                [obj.spots.channel] = deal(obj);
+        function set.hSpots(obj, h)
+            obj.hSpots = h;
+            if ~isempty(obj.hSpots)
+                [obj.hSpots.hChannel] = deal(obj);
             end
             notify(obj, 'SpotsChanged');
         end
-        
-        function set.alignedToChannel(obj, channel)
-            obj.alignedToChannel = channel;
-            notify(obj, 'AlignmentChanged');
-        end
-        function set.alignment(obj, alignment)
-            obj.alignment = alignment;
-            notify(obj, 'AlignmentChanged');
-        end
-        
-        function set.selectedImage(obj, h)
-            obj.selectedImage = h;
-            obj.updateOverlayInOtherChannels();
-            notify(obj, 'SelectedImageChanged');
-%             if isempty(h)
-%                 obj.selectedImage = ImageStack.empty;
-%                 obj.updateOverlayInOtherChannels();
-%                 notify(obj, 'SelectedImageChanged');
-%             elseif ~isempty(obj.images) && any(obj.images == h)
-%                 % h is in obj.images
-%                 obj.selectedImage = h;
-%                 obj.updateOverlayInOtherChannels();
-%                 notify(obj, 'SelectedImageChanged');
-%             else
-%                 % h is NOT in obj.images
-%                 % If the current selected image is valid, leave it alone.
-%                 % Otherwise, clear it.
-%                 if ~isempty(obj.selectedImage) && ~any(obj.images == obj.selectedImage)
-%                     obj.selectedImage = ImageStack.empty;
-%                     obj.updateOverlayInOtherChannels();
-%                     notify(obj, 'SelectedImageChanged');
-%                 end
-%             end
-        end
-        function setSelectedImage(obj, h)
-            % because setters are not valid callbacks
-            obj.selectedImage = h;
-        end
-        
-        function updateOverlayInOtherChannels(obj)
-            for channel = obj.getOtherChannels()
-                if isequal(channel.overlayChannel, obj)
-                    notify(channel, 'OverlayChannelChanged');
+        function set.hSelectedSpot(obj, h)
+            if obj.autoSelectMappedSpotsInSiblingChannels && ~isempty(obj.hExperiment)
+                hSiblingChannels = obj.getSiblingChannels();
+                if ~isempty(hSiblingChannels)
+                    obj.selectMappedSpotsInSiblingChannels(h, hSiblingChannels);
                 end
             end
-        end
-        
-        function set.selectedSpot(obj, selectedSpot)
-            if obj.autoSelectMappedSpotsInOtherChannels && ~isempty(obj.experiment)
-                otherChannels = obj.getOtherChannels();
-                if ~isempty(otherChannels)
-                    obj.selectMappedSpotsInOtherChannels(selectedSpot, otherChannels);
-                end
-            end
-            obj.selectedSpot = selectedSpot;
-            if ~isempty(obj.selectedSpot)
-                obj.selectedSpot.channel = obj;
+            obj.hSelectedSpot = h;
+            if ~isempty(obj.hSelectedSpot)
+                obj.hSelectedSpot.hChannel = obj;
             end
             notify(obj, 'SelectedSpotChanged');
         end
         
-        function selectMappedSpotsInOtherChannels(obj, selectedSpot, otherChannels)
-            if ~exist('selectedSpot', 'var')
-                selectedSpot = obj.selectedSpot;
-            end
-            if ~exist('otherChannels', 'var')
-                otherChannels = obj.getOtherChannels();
-            end
-            if isempty(otherChannels)
-                return
-            end
-            idx = [];
-            if ~isempty(selectedSpot) && ~isempty(obj.spots)
-                idx = find(obj.spots == selectedSpot, 1);
-            end
-            nspots = numel(obj.spots);
-            for channel = otherChannels
-                tmp = channel.autoSelectMappedSpotsInOtherChannels;
-                channel.autoSelectMappedSpotsInOtherChannels = false;
-                if isempty(selectedSpot)
-                    % clear selected spot in other channel
-                    channel.selectedSpot = Spot.empty;
-                else
-                    isMapped = ~isempty(idx) && numel(channel.spots) >= idx;
-                    if isMapped
-                        % show the mapped spot in channel
-                        channel.selectedSpot = channel.spots(idx);
-                    else
-                        % select aligned location in channel
-                        alignedSpot = Spot;
-                        alignedSpot.xy = channel.getOtherChannelSpotsInLocalCoords(obj, selectedSpot.xy);
-                        channel.selectedSpot = alignedSpot;
-                    end
-                end
-                channel.autoSelectMappedSpotsInOtherChannels = tmp;
+        function hSiblingChannels = getSiblingChannels(obj)
+            % GETSIBLINGCHANNELS Get other channels in parent experiment.
+            hSiblingChannels = Channel.empty(1,0);
+            if ~isempty(obj.hExperiment) && isvalid(obj.hExperiment)
+                hSiblingChannels = setdiff(obj.hExperiment.hChannels, obj);
             end
         end
         
-        function set.selectedProjectionImageStack(obj, h)
-            obj.selectedProjectionImageStack = h;
-            notify(obj, 'SelectedProjectionImageStackChanged');
-%             if isempty(h)
-%                 obj.selectedProjectionImageStack = ImageStack.empty;
-%                 notify(obj, 'SelectedProjectionImageStackChanged');
-%             elseif ~isempty(obj.images) && any(obj.images == h)
-%                 % h is in obj.images
-%                 obj.selectedProjectionImageStack = h;
-%                 notify(obj, 'SelectedProjectionImageStackChanged');
-%             else
-%                 % h is NOT in obj.images
-%                 % If the current selected image is valid, leave it alone.
-%                 % Otherwise, select the first image stack.
-%                 if isempty(obj.selectedProjectionImageStack) || ~any(obj.images == obj.selectedProjectionImageStack)
-%                     obj.selectFirstValidProjectionImageStack();
-%                 end
-%             end
+        function hNewImage = loadNewImage(obj, filepath)
+            %LOADNEWIMAGE Load new image stack from file.
+            if ~exist('filepath', 'var')
+                filepath = '';
+            end
+            hNewImage = ImageStack;
+            hNewImage.load(filepath, '', [], [], true);
+            if isempty(hNewImage.fileInfo)
+                hNewImage = ImageStack.empty;
+                return
+            end
+            [~, hNewImage.label, ~] = fileparts(hNewImage.fileInfo(1).Filename);
+            obj.hImages = [obj.hImages hNewImage];
+%             obj.selectedImage = hNewImage;
         end
-        function setSelectedProjectionImageStack(obj, h)
-            % because setters are not valid callbacks
-            obj.selectedProjectionImageStack = h;
-        end
-        function selectFirstValidProjectionImageStack(obj)
-            for image = obj.images
-                if image.numFrames > 1
-                    obj.selectedProjectionImageStack = image;
+        function removeImage(obj, hImage, ask)
+            %REMOVEIMAGE Delete channel image.
+            if isempty(obj.hImages)
+                return
+            end
+            idx = find(obj.hImages == hImage, 1);
+            if isempty(idx)
+                return
+            end
+            if exist('ask', 'var') && ask
+                if questdlg(['Remove image ' char(hImage.label) '?'], ...
+                        'Remove image?', ...
+                        'OK', 'Cancel', 'Cancel') == "Cancel"
                     return
                 end
             end
-            obj.selectedProjectionImageStack = ImageStack.empty;
+            delete(hImage);
+            obj.hImages(idx) = [];
+        end
+        function reloadAllMissingImages(obj)
+            if ~isempty(obj.hImages)
+                for hImage = obj.hImages
+                    if isempty(hImage.data)
+                        hImage.reload();
+                    end
+                end
+            end
         end
         
-        function set.overlayChannel(obj, channel)
-            obj.overlayChannel = channel;
-            notify(obj, 'OverlayChannelChanged');
+        function setAlignmentToChannel(obj, hChannel, T)
+            obj.hAlignedToChannel = hChannel;
+            obj.alignmentTransform = T;
+            notify(obj, 'AlignmentChanged');
         end
-        function setOverlayChannel(obj, channel)
-            % Only needed because setters aren't valid callbacks.
-            obj.overlayChannel = channel;
+        function alignToChannel(obj, hChannel, method, movingImage, fixedImage)
+            %ALIGNTOCHANNEL Align obj --> hChannel by images or spots
+            if isempty(hChannel)
+                obj.hAlignedToChannel = Channel.empty;
+                return
+            end
+            % check for cyclic alignment
+            if isequal(obj, hChannel.hAlignedToChannel)
+                warndlg({[char(hChannel.label) ' is already aligned to ' char(obj.label)], ...
+                    ['Aligning ' char(obj.label) ' to ' char(hChannel.label) ' would result in a cyclic alignment loop.'], ...
+                    'This is not allowed.'}, ...
+                    'Cyclic Alignment Attempt');
+                return
+            end
+            % alignment method selection UI
+            if ~exist('method', 'var') || isempty(method)
+                methods = {'images', 'spots', 'identical'};
+                [idx, tf] = listdlg('PromptString', 'Alignment Method',...
+                    'SelectionMode', 'single', ...
+                    'ListString', methods);
+                if ~tf
+                    return
+                end
+                method = methods{idx};
+            end
+            % alignment
+            T = ob.alignmentTransform;
+            if method == "images"
+                if isempty(movingImage) || isempty(fixedImage)
+                    warndlg('Requires inputting the moving and fixed images to be aligned.', 'No images given for alignment.');
+                    return
+                end
+                %movingImage = imadjust(uint16(movingImage));
+                %fixedImage = imadjust(uint16(fixedImage));
+                registration = Utilities.registrationEstimatorAppWrapper(movingImage, fixedImage);
+                if ~isempty(registration.transformation)
+                    T = registration.transformation;
+                end
+            elseif method == "spots"
+                % TODO
+                warndlg('Aligning spots not yet implemented.', 'Coming Soon');
+                return
+            elseif method == "identical"
+                T = [];
+            end
+            obj.setAlignmentToChannel(hChannel, T);
+        end
+        function T = getTransformationToAlignedCoords(obj)
+            % Return 2D transformation to parent experiment (aligned) coordinates.
+            T = [];
+            hChannel = obj;
+            while ~isempty(hChannel.hAlignedToChannel)
+                if isempty(T)
+                    T = hChannel.alignmentTransform;
+                else
+                    T.T = hChannel.alignmentTransform.T * T.T;
+                end
+                hChannel = hChannel.hAlignedToChannel;
+            end
+        end
+        function im = getOtherChannelImageInLocalCoords(obj, hOtherhannel, im)
+            T = Channel.getTransformationBetweenChannels(hOtherhannel, obj);
+            if ~isempty(T)
+                im =  imwarp(im, T, 'OutputView', imref2d(size(im)));
+            end
+        end
+        function xy = getOtherChannelSpotsInLocalCoords(obj, hOtherhannel, xy)
+            T = Channel.getTransformationBetweenChannels(hOtherhannel, obj);
+            if ~isempty(T)
+                xy = transformPointsForward(T, xy);
+            end
+        end
+        function tf = areSpotsMappedToOtherChannelSpots(obj, hOtherhannel, dmax)
+            if isempty(obj.hSpots) || isempty(hOtherhannel.hSpots) ...
+                    || numel(obj.hSpots) ~= numel(hOtherhannel.hSpots)
+                tf = false;
+                return
+            end
+            if exist('dmax', 'var')
+                xy = obj.getOtherChannelSpotsInLocalCoords(hOtherhannel, vertcat(hOtherhannel.hSpots.xy));
+                d2 = sum((xy - vertcat(obj.hSpots.xy)).^2, 2);
+                % only considered to be mapped if locations are closely aligned
+                tf = all(d2 <= dmax^2);
+            else
+                tf = true;
+            end
+        end
+        function selectMappedSpotsInSiblingChannels(obj, hSpot, hSiblingChannels)
+            if ~exist('hSpot', 'var')
+                hSpot = obj.hSelectedSpot;
+            end
+            if ~exist('hSiblingChannels', 'var')
+                hSiblingChannels = obj.getSiblingChannels();
+            end
+            if isempty(hSiblingChannels)
+                return
+            end
+            idx = [];
+            if ~isempty(hSpot) && ~isempty(obj.hSpots)
+                idx = find(obj.hSpots == hSpot, 1);
+            end
+            numSpots = numel(obj.hSpots);
+            for hSiblingChannel = hSiblingChannels
+                tmp = hSiblingChannel.autoSelectMappedSpotsInSiblingChannels;
+                hSiblingChannel.autoSelectMappedSpotsInSiblingChannels = false;
+                if isempty(hSpot)
+                    % clear selected spot in sibling channel
+                    hSiblingChannel.hSelectedSpot = Spot.empty;
+                else
+                    isMapped = ~isempty(idx) && numel(hSiblingChannel.hSpots) >= idx;
+                    if isMapped
+                        % select mapped spot in sibling channel
+                        hSiblingChannel.hSelectedSpot = hSiblingChannel.hSpots(idx);
+                    else
+                        % select mapped location in sibling channel
+                        mappedSpot = Spot;
+                        mappedSpot.xy = hSiblingChannel.getOtherChannelSpotsInLocalCoords(obj, hSpot.xy);
+                        hSiblingChannel.hSelectedSpot = mappedSpot;
+                    end
+                end
+                hSiblingChannel.autoSelectMappedSpotsInSiblingChannels = tmp;
+            end
+        end
+        
+        function set.hOverlayChannel(obj, h)
+            obj.hOverlayChannel = h;
+            notify(obj, 'OverlayChanged');
+        end
+        function setOverlayChannel(obj, h)
+            obj.hOverlayChannel = h;
         end
         function set.overlayColorChannels(obj, colors)
             if isnumeric(colors)
@@ -290,236 +348,19 @@ classdef Channel < handle
             elseif colors == "blue-red"
                 obj.overlayColorChannels = [2 0 1];
             end
-            notify(obj, 'OverlayChannelChanged');
+            notify(obj, 'OverlayChanged');
         end
         function setOverlayColorChannels(obj, colors)
-            % Only needed because setters aren't valid callbacks.
             obj.overlayColorChannels = colors;
         end
         
-        function frame = get.selectedImageFrame(obj)
-            frame = [];
-            if ~isempty(obj.selectedImage)
-                frame = obj.selectedImage.selectedFrame;
-            end
-        end
-        
-        function spot = get.querySpot(obj)
-            if isempty(obj.spots)
-                spot = Spot.empty;
-            elseif ~isempty(obj.selectedSpot) && any(obj.spots == obj.selectedSpot)
-                spot = obj.selectedSpot;
-            else
-                spot = obj.spots(1);
-            end
-        end
-        
-        function channels = getOtherChannels(obj)
-            channels = Channel.empty(1,0);
-            if ~isempty(obj.experiment) && isvalid(obj.experiment)
-                channels = setdiff(obj.experiment.channels, obj);
-            end
-        end
-        
-        function tf = areSpotsMappedToOtherChannelSpots(obj, channel, dmax)
-            if isempty(obj.spots) || isempty(channel.spots) ...
-                    || numel(obj.spots) ~= numel(channel.spots)
-                tf = false;
-                return
-            end
-            if exist('dmax', 'var')
-                xy = obj.getOtherChannelSpotsInLocalCoords(channel, vertcat(channel.spots.xy));
-                d2 = sum((xy - vertcat(obj.spots.xy)).^2, 2);
-                % only considered to be mapped if locations are closely aligned
-                tf = all(d2 <= dmax^2);
-            else
-                tf = true;
-            end
-        end
-        
-        function loadNewImage(obj, filepath)
-            %LOADNEWIMAGE Load new image stack from file.
-            if ~exist('filepath', 'var')
-                filepath = '';
-            end
-            newImage = ImageStack;
-            newImage.load(filepath, '', [], [], true);
-            if isempty(newImage.fileInfo)
-                return
-            end
-            [~, newImage.label, ~] = fileparts(newImage.fileInfo(1).Filename);
-            obj.images = [obj.images newImage];
-            obj.selectedImage = newImage;
-        end
-        
-        function reloadSelectedImage(obj)
-            %RELOADSELECTEDIMAGE Reload selected image stack from file.
-            if isempty(obj.selectedImage)
-                return
-            end
-            obj.selectedImage.reload();
-        end
-        
-        function removeImage(obj, idx, ask)
-            %REMOVEIMAGEAT Delete obj.images(idx).
-            if ~exist('idx', 'var') || isempty(idx)
-                if isempty(obj.selectedImage)
-                    return
-                end
-                idx = find(obj.images == obj.selectedImage);
-                if isempty(idx)
-                    return
-                end
-            end
-            % If idx is an ImageStack handle, convert it to an index.
-            if class(idx) == "ImageStack"
-                idx = find(obj.images == idx, 1);
-                if isempty(idx)
-                    return
-                end
-            end
-            if exist('ask', 'var') && ask
-                if questdlg(['Remove image ' char(obj.images(idx).label) '?'], ...
-                        'Remove image?', ...
-                        'OK', 'Cancel', 'Cancel') == "Cancel"
-                    return
-                end
-            end
-            % update selected image if it was removed
-            if isequal(obj.selectedImage, obj.images(idx))
-                nimages = numel(obj.images);
-                if nimages > idx
-                    obj.selectedImage = obj.images(idx+1);
-                elseif idx > 1
-                    obj.selectedImage = obj.images(idx-1);
-                else
-                    obj.selectedImage = ImageStack.empty;
-                end
-            end
-            delete(obj.images(idx));
-            obj.images(idx) = [];
-        end
-        
-        function duplicateSelectedImage(obj, frames)
-            %DUPLICATE Duplicate frames of selected image stack.
-            %   Append duplicate image to channel's image list.
-            if isempty(obj.selectedImage)
-                return
-            end
-            if ~exist('frames', 'var')
-                frames = [];
-            end
-            try
-                newImage = obj.selectedImage.duplicate(frames);
-                if ~isempty(newImage.data)
-                    obj.images = [obj.images newImage];
-                    obj.selectedImage = newImage;
-                end
-            catch
-            end
-        end
-        
-        function zprojectSelectedImage(obj, frames, method, previewImage)
-            %ZPROJECT Z-Project frames of selected image stack.
-            %   Append z-projected image to channel's image list.
-            if isempty(obj.selectedImage)
-                return
-            end
-            if ~exist('frames', 'var')
-                frames = [];
-            end
-            if ~exist('method', 'var')
-                method = '';
-            end
-            if ~exist('previewImage', 'var')
-                previewImage = gobjects(0);
-            end
-            try
-                newImage = obj.selectedImage.zproject(frames, method, previewImage);
-                if ~isempty(newImage.data)
-                    obj.images = [obj.images newImage];
-                    obj.selectedImage = newImage;
-                end
-            catch
-            end
-        end
-        
-        function gaussFilterSelectedImage(obj, sigma, applyToAllFrames, previewImage)
-            %GAUSSFILTER Apply Gaussian filter to selected image (stack).
-            if isempty(obj.selectedImage)
-                return
-            end
-            if ~exist('sigma', 'var')
-                sigma = [];
-            end
-            if ~exist('applyToAllFrames', 'var')
-                applyToAllFrames = [];
-            end
-            if ~exist('previewImage', 'var')
-                previewImage = gobjects(0);
-            end
-            try
-                t = obj.selectedImage.selectedFrameIndex;
-                obj.selectedImage.gaussFilter(t, sigma, previewImage, applyToAllFrames);
-            catch
-            end
-        end
-        
-        function tophatFilterSelectedImage(obj, diskRadius, applyToAllFrames, previewImage)
-            %TOPHATFILTER Apply tophat filter to selected image (stack).
-            if isempty(obj.selectedImage)
-                return
-            end
-            if ~exist('diskRadius', 'var')
-                diskRadius = [];
-            end
-            if ~exist('applyToAllFrames', 'var')
-                applyToAllFrames = [];
-            end
-            if ~exist('previewImage', 'var')
-                previewImage = gobjects(0);
-            end
-            try
-                t = obj.selectedImage.selectedFrameIndex;
-                obj.selectedImage.tophatFilter(t, diskRadius, previewImage, applyToAllFrames);
-            catch
-            end
-        end
-        
-        function thresholdSelectedImage(obj, threshold, previewImage)
-            %THRESHOLD Threshold selected image stack frame.
-            %   Append thresholded mask to channel's image list.
-            if isempty(obj.selectedImage)
-                return
-            end
-            if ~exist('threshold', 'var')
-                threshold = [];
-            end
-            if ~exist('previewImage', 'var')
-                previewImage = gobjects(0);
-            end
-            try
-                t = obj.selectedImage.selectedFrameIndex;
-                newImage = obj.selectedImage.threshold(t, threshold, previewImage);
-                if ~isempty(newImage.data)
-                    obj.images = [obj.images newImage];
-                    obj.selectedImage = newImage;
-                end
-            catch
-            end
-        end
-        
-        function findSpotsInSelectedImage(obj, previewImage)
+        function findSpotsInImage(obj, im, hPreviewImage)
             %   For a binary mask, call regionprops().
             %   For a grayscale image, find the local maxima.
-            if isempty(obj.selectedImage)
-                return
-            end
-            im = obj.selectedImageFrame;
             if isempty(im)
                 return
             end
-            if ~isempty(obj.spots)
+            if ~isempty(obj.hSpots)
                 if questdlg('This will overwrite current spots. Continue?', 'Overwrite Spots?') ~= "Yes"
                     return
                 end
@@ -531,224 +372,112 @@ classdef Channel < handle
             if islogical(im)
                 wb = waitbar(0, 'Finding spots...');
                 props = regionprops(im, 'all');
-                nspots = numel(props);
-                if nspots
+                numSpots = numel(props);
+                if numSpots
                     newSpots = Spot.empty(0,1);
-                    for k = 1:nspots
-                        newSpots(k,1) = Spot;
+                    newSpots(numSpots,1) = Spot;
+                    for k = 1:numSpots
                         newSpots(k,1).xy = props(k).Centroid;
                         newSpots(k,1).props = props(k);
                     end
-                    obj.spots = newSpots;
+                    obj.hSpots = newSpots;
                 else
-                    obj.spots = Spot.empty(0,1);
+                    obj.hSpots = Spot.empty(0,1);
                 end
                 close(wb);
             else
-                xy = ImageOps.findMaximaPreview(im, [], [], 0, 0, previewImage);
-                nspots = size(xy,1);
-                if nspots
+                xy = ImageOps.findMaximaPreview(im, [], [], 0, 0, hPreviewImage);
+                numSpots = size(xy,1);
+                if numSpots
                     newSpots = Spot.empty(0,1);
-                    for k = 1:nspots
-                        newSpots(k,1) = Spot;
+                    newSpots(numSpots,1) = Spot;
+                    for k = 1:numSpots
                         newSpots(k,1).xy = xy(k,:);
                     end
-                    obj.spots = newSpots;
+                    obj.hSpots = newSpots;
                 else
-                    obj.spots = Spot.empty(0,1);
+                    obj.hSpots = Spot.empty(0,1);
                 end
             end
-            if ~isempty(obj.spots)
-                obj.selectedSpot = obj.spots(1);
+            if ~isempty(obj.hSpots)
+                obj.hSelectedSpot = obj.hSpots(1);
             else
-                obj.selectedSpot = Spot.empty;
+                obj.hSelectedSpot = Spot.empty;
             end
         end
-        
         function clearSpots(obj)
             %CLEARSPOTS Delete all current spots.
-            obj.spots = Spot.empty(0,1);
-            obj.selectedSpot = Spot.empty;
-            % clear spots in all other channels?
-            otherChannels = obj.getOtherChannels();
-            if ~isempty(otherChannels)
-                if questdlg('Clear spots in all other channels?', 'Clear Spots') == "Yes"
-                    for channel = otherChannels
-                        channel.clearSpots();
-                    end
-                end
-            end
+            obj.hSpots = Spot.empty(0,1);
+            obj.hSelectedSpot = Spot.empty;
         end
-        
         function addSpot(obj, xy)
             %ADDSPOT Add a new spot at (x,y).
             newSpot = Spot;
             newSpot.xy = xy;
-            obj.spots = [obj.spots; newSpot];
-            obj.selectedSpot = newSpot;
+            obj.hSpots = [obj.hSpots; newSpot];
+            obj.hSelectedSpot = newSpot;
             % add spot in all other 1 to 1 mapped channels?
-            otherChannels = obj.getOtherChannels();
-            if ~isempty(otherChannels)
+            hSiblingChannels = obj.getSiblingChannels();
+            if ~isempty(hSiblingChannels)
                 %if questdlg('Add mapped spot to all other channels?', 'Add Spot') == "Yes"
-                    for channel = otherChannels
-                        if obj.areSpotsMappedToOtherChannelSpots(channel)
+                    for hSiblingChannel = hSiblingChannels
+                        if obj.areSpotsMappedToOtherChannelSpots(hSiblingChannel)
                             newSpot = Spot;
-                            newSpot.xy = obj.getOtherChannelSpotsInLocalCoords(channel, xy);
-                            channel.spots = [channel.spots; newSpot];
-                            channel.selectedSpot = newSpot;
+                            newSpot.xy = hSiblingChannel.getOtherChannelSpotsInLocalCoords(obj, xy);
+                            hSiblingChannel.hSpots = [hSiblingChannel.hSpots; newSpot];
+                            hSiblingChannel.hSelectedSpot = newSpot;
                         end
                     end
                 %end
             end
         end
-        
         function removeSpot(obj, idx)
             %REMOVESPOT Delete spot(s).
-            if any(obj.spots(idx) == obj.selectedSpot)
-                obj.selectedSpot = Spot.empty;
+            if any(obj.hSpots(idx) == obj.hSelectedSpot)
+                obj.hSelectedSpot = Spot.empty;
             end
-            delete(obj.spots(idx));
-            obj.spots(idx) = [];
+            delete(obj.hSpots(idx));
+            obj.hSpots(idx) = [];
             % remove spot(s) from all other 1 to 1 mapped channels?
-            otherChannels = obj.getOtherChannels();
-            if ~isempty(otherChannels)
+            hSiblingChannels = obj.getSiblingChannels();
+            if ~isempty(hSiblingChannels)
                 %if questdlg('Remove mapped spot(s) in all other channels?', 'Remove Spot') == "Yes"
-                    for channel = otherChannels
-                        if obj.areSpotsMappedToOtherChannelSpots(channel)
-                            if any(channel.spots(idx) == channel.selectedSpot)
-                                channel.selectedSpot = Spot.empty;
+                    for hSiblingChannel = hSiblingChannels
+                        if obj.areSpotsMappedToOtherChannelSpots(hSiblingChannel)
+                            if any(hSiblingChannel.hSpots(idx) == hSiblingChannel.hSelectedSpot)
+                                hSiblingChannel.hSelectedSpot = Spot.empty;
                             end
-                            delete(channel.spots(idx));
-                            channel.spots(idx) = [];
+                            delete(hSiblingChannel.hSpots(idx));
+                            hSiblingChannel.hSpots(idx) = [];
                         end
                     end
                 %end
             end
         end
-        
-        function alignToChannel(obj, channel, method, moving, fixed)
-            %ALIGNTOCHANNEL Align obj --> channel by images or spots
-            if ~isempty(channel) && ~isempty(channel.alignedToChannel) && channel.alignedToChannel == obj
-                warndlg({[char(channel.label) ' is already aligned to ' char(obj.label)], ...
-                    ['Aligning ' char(obj.label) ' to ' char(channel.label) ' would result in a cyclic alignment loop.'], ...
-                    'This is not allowed.'}, ...
-                    'Cyclic Alignment Attempt');
+        function copyMappedSpotsToOtherChannels(obj, hOtherChannels)
+            if isempty(hOtherChannels)
                 return
             end
-            obj.alignedToChannel = channel;
-            if isempty(channel)
-                return
-            end
-            if ~exist('method', 'var') || isempty(method)
-                methods = {'images', 'spots', 'identical'};
-                [idx, tf] = listdlg('PromptString', 'Alignment Method',...
-                    'SelectionMode', 'single', ...
-                    'ListString', methods);
-                if ~tf
-                    return
-                end
-                method = methods{idx};
-            end
-            if method == "images"
-                if ~exist('moving', 'var') || isempty(moving)
-                    moving = obj.selectedImageFrame;
-                end
-                if ~exist('fixed', 'var') || isempty(fixed)
-                    fixed = channel.selectedImageFrame;
-                end
-                if isempty(moving) || isempty(fixed)
-                    warndlg('First select the image frames to be aligned.', 'No selected image frames.');
-                    return
-                end
-                moving = imadjust(uint16(moving));
-                fixed = imadjust(uint16(fixed));
-                reg = ImageRegistration;
-                reg.registerImages(moving, fixed);
-                if ~isempty(reg.transformation)
-                    obj.alignment = reg;
-                end
-            elseif method == "spots"
-                % TODO
-                warndlg('Aligning spots not yet implemented.', 'Coming Soon');
-            elseif method == "identical"
-                obj.alignment = ImageRegistration;
-            end
-        end
-        
-        function T = getTransformationToAlignedCoords(obj)
-            % Return 2D transformation to parent experiment (aligned) coordinates.
-            T = [];
-            channel = obj;
-            while ~isempty(channel.alignedToChannel)
-                if isempty(T)
-                    T = channel.alignment.transformation;
-                else
-                    T.T = channel.alignment.transformation.T * T.T;
-                end
-                channel = channel.alignedToChannel;
-            end
-        end
-        
-        function im = getOtherChannelImageInLocalCoords(obj, channel, im)
-            T = Channel.getTransformationBetweenChannels(channel, obj);
-            if ~isempty(T)
-                im =  imwarp(im, T, 'OutputView', imref2d(size(im)));
-            end
-        end
-        
-        function xy = getOtherChannelSpotsInLocalCoords(obj, channel, xy)
-            T = Channel.getTransformationBetweenChannels(channel, obj);
-            if ~isempty(T)
-                xy = transformPointsForward(T, xy);
-            end
-        end
-        
-        function copyMappedSpotsToOtherChannels(obj, channels)
-            xy = vertcat(obj.spots.xy);
-            nspots = numel(obj.spots);
-            for channel = channels
-                cxy = channel.getOtherChannelSpotsInLocalCoords(obj, xy);
+            xy = vertcat(obj.hSpots.xy);
+            numSpots = numel(obj.hSpots);
+            for hOtherChannel = hOtherChannels
+                cxy = hOtherChannel.getOtherChannelSpotsInLocalCoords(obj, xy);
                 newSpots = Spot.empty(0,1);
-                newSpots(nspots,1) = Spot;
-                for i = 1:nspots
-                    newSpots(i).xy = cxy(i,:);
-                    newSpots(i).tags = obj.spots(i).tags;
+                newSpots(numSpots,1) = Spot();
+                for k = 1:numSpots
+                    newSpots(k).xy = cxy(k,:);
+                    newSpots(k).tags = obj.hSpots(k).tags;
                 end
-                channel.spots = newSpots;
+                hOtherChannel.hSpots = newSpots;
             end
         end
-        function copyMappedSpotsToAllOtherChannels(obj)
-            obj.copyMappedSpotsToOtherChannels(obj.getOtherChannels());
-        end
-        
-        function setSpotTsSampleInterval(obj, dt)
-            if ~exist('dt', 'var')
-                answer = inputdlg({'Sample Interval (sec):'}, 'Sample Interval', 1, {''});
-                if isempty(answer)
-                    return
-                end
-                dt = str2num(answer{1});
-            end
-            if ~isempty(obj.selectedProjectionImageStack)
-                obj.selectedProjectionImageStack.frameIntervalSec = dt;
-            end
-            spots = union(obj.spots, obj.selectedSpot);
-            for k = 1:numel(spots)
-                spots(k).tsData.rawTime = dt;
-                if isempty(dt)
-                    spots(k).tsData.timeUnits = 'frames';
-                else
-                    spots(k).tsData.timeUnits = 'seconds';
-                end
-            end
-            if ~isempty(obj.selectedSpot)
-                notify(obj, 'SelectedSpotChanged');
-            end
+        function copyMappedSpotsToAllSiblingChannels(obj)
+            obj.copyMappedSpotsToOtherChannels(obj.getSiblingChannels());
         end
         
         function set.spotTsSumEveryN(obj, N)
             obj.spotTsSumEveryN = N;
-            if ~isempty(obj.selectedSpot)
+            if ~isempty(obj.hSelectedSpot)
                 notify(obj, 'SelectedSpotChanged');
             end
         end
@@ -763,7 +492,7 @@ classdef Channel < handle
         
         function set.spotTsFilter(obj, filt)
             obj.spotTsFilter = filt;
-            if ~isempty(obj.selectedSpot)
+            if ~isempty(obj.hSelectedSpot)
                 notify(obj, 'SelectedSpotChanged');
             end
         end
@@ -773,19 +502,16 @@ classdef Channel < handle
             % in the base workspace ans variable
             designfilt();
             try
-                %evalin('base', 'whos')
                 filt = evalin('base', 'ans');
-                %class(filt)
                 if class(filt) == "digitalFilter"
                     obj.spotTsFilter = filt;
                 end
             catch
             end
         end
-        
         function toggleSpotTsApplyFilter(obj)
             obj.spotTsApplyFilter = ~obj.spotTsApplyFilter;
-            if ~isempty(obj.selectedSpot)
+            if ~isempty(obj.hSelectedSpot)
                 notify(obj, 'SelectedSpotChanged');
             end
             if isempty(obj.spotTsFilter)
