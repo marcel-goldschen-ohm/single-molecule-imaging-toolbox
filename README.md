@@ -5,6 +5,7 @@ A collection of MATLAB tools for single-molecule image time series analysis.
 
 * Experiment
     * Channels
-        * Images (every image is an ImageStack, even with only one frame)
+        * Images (every image is an ImageStack, even if only one frame)
         * Spots
-        * Alignment
+            * Time Series (e.g. z-projection through image stack)
+        * Alignment to another Channel (e.g. via image registration)
