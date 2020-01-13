@@ -219,7 +219,7 @@ classdef Channel < handle
                 method = methods{idx};
             end
             % alignment
-            T = ob.alignmentTransform;
+            T = obj.alignmentTransform;
             if method == "images"
                 if isempty(movingImage) || isempty(fixedImage)
                     warndlg('Requires inputting the moving and fixed images to be aligned.', 'No images given for alignment.');
@@ -228,8 +228,8 @@ classdef Channel < handle
                 %movingImage = imadjust(uint16(movingImage));
                 %fixedImage = imadjust(uint16(fixedImage));
                 registration = Utilities.registrationEstimatorAppWrapper(movingImage, fixedImage);
-                if ~isempty(registration.transformation)
-                    T = registration.transformation;
+                if ~isempty(registration) && ~isempty(registration.Transformation)
+                    T = registration.Transformation;
                 end
             elseif method == "spots"
                 % TODO

@@ -229,18 +229,11 @@ classdef Utilities < handle
             registration = [];
 
             % launch MATLAB's registrationEstimator app
+            hFigures = findall(groot, 'type', 'Figure');
             registrationEstimator(movingImage, fixedImage);
-
-            % get handle to registrationEstimator uifigure
-            appFigureHandle = gobjects(0);
-            hfigs = findall(groot, 'type', 'Figure');
-            for i = 1:numel(hfigs)
-                if hfigs(i).Name == "moving (Moving Image)  &  fixed (Fixed Image)"
-                    appFigureHandle = hfigs(i);
-                    break
-                end
-            end
-            if isempty(appFigureHandle)
+            hNewFigures = findall(groot, 'type', 'Figure');
+            hAppFigure = hNewFigures(~ismember(hNewFigures, hFigures));
+            if isempty(hAppFigure)
                 return
             end
 
@@ -255,7 +248,7 @@ classdef Utilities < handle
             % get list of base workspace variables
             vars = evalin('base', 'who()');
             % block until registrationEstimator uifigure is closed
-            waitfor(appFigureHandle);
+            waitfor(hAppFigure);
             % get list of base workspace variables
             newvars = evalin('base', 'who()');
             % find new base workspace variables (i.e. those exported from

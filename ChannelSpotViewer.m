@@ -276,7 +276,7 @@ classdef ChannelSpotViewer < handle
         end
         
         function onChannelLabelChanged(obj)
-            obj.hTtraceAxes.YLabel.String = obj.hChannel.label;
+            obj.hTraceAxes.YLabel.String = obj.hChannel.label;
             obj.resize();
         end
         function onProjectionImageStackChanged(obj)
