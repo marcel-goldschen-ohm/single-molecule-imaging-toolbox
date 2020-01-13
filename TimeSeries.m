@@ -15,9 +15,6 @@ classdef TimeSeries
         offset = 0; % 1x1 OR size(rawData)
         scale = 1; % 1x1 OR size(rawData)
         isMasked = false; % 1x1 OR size(rawData)
-        
-%         sumEveryN = 1; % e.g. simulate longer imaging frame durations
-%         filter = digitalFilter.empty;
     end
     
     properties (Dependent)
