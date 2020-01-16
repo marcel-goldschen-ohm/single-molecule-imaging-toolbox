@@ -36,13 +36,13 @@ All data is now also accessible from the command window via `ui.*` (see below).
 
 1. Open the GUI by executing `ui = ExperimentViewer();`. This will show a default empty `Experiment`.
 2. Create `Channel`s as needed by clicking the `+` button above the channels listbox.
-3. For each channel, load images/image stacks via the channel's image menu (hamburger menu button near the top left corner of each channel's image axes - make sure the *Image* or *Image & Trace* layout is selected so that image axes are shown).
-4. For each channel, select the image stack to use for z-projecting spots via the channel's trace menu (hamburger menu button near the top left corner of each channel's trace axes - make sure the *Trace* or *Image & Trace* layout is selected so that trace axes are shown).
-5. Align channels as needed via the channel's image menu (see below).
+3. For each channel, load images/image stacks via the channel's image menu (hamburger menu button near the top left corner of each channel's image axes - make sure the *Image* or *Image & Trace* layout is selected so that image axes are shown) *Menu->Load Image (Stack)*. You can select which image (stack) to view via *Channel Image Menu->Select Image* or from the dropdown list obtained by clicking the button above the image axes displaying the current image label.
+4. For each channel, select the image stack to use for z-projecting spots via the channel's trace menu (hamburger menu button near the top left corner of each channel's trace axes - make sure the *Trace* or *Image & Trace* layout is selected so that trace axes are shown) *Channel Trace Menu->Select Projection Image Stack*. You can also select the projection image stack from the dropdown list obtained by clicking the button above the trace axes displaying the current projection image stack label.
+5. Align channels as needed via the channel's image menu (see below). *Channel Image Menu->Align to Channel*
 6. Find the spots in a representative image for one of your channels (i.e. the image that most reliably shows spot locations) via that channel's image menu.
-7. Copy the identified spots in the above channel to all other channels via that channel's image menu. When copied spot locations will be adjusted to account for the relative alignment between channels. Thus, if you alter channel alignments, you will need to repeat this step (:construction: this could be handled automatically, see TODO below).
-8. Z-project all spots. Set selection to *all channels* (see Selections and Actions section below) and click the *Z-Project Traces* button.
-9. Save the experiment data structure (File->Save). You can now load the data again via File->Open (however there is one gotcha that you will love, see the File I/O section below).
+7. Copy the identified spots in the above channel to all other channels via *Channel Image Menu->Copy Spots to All Other Channels*. When copied spot locations will be adjusted to account for the relative alignment between channels. Thus, if you alter channel alignments, you will need to repeat this step (:construction: this could be handled automatically, see TODO below).
+8. Z-project all spots. Set selection to *all channels* (see Selections and Actions section below) and click the *Z-Project Traces* button. Now z-projection time series for each spot will be stored in the experiment data strucutre independent of whether or not the full image stack data is loaded.
+9. Save the experiment data structure (File->Save in the main menubar). You can now load the data again via File->Open (however there is one gotcha that you will love, see the File I/O section below).
 
 ## File I/O
 
