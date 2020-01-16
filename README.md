@@ -57,6 +57,8 @@ All data is now also accessible from the command window via `ui.*` (see below).
 
 ## Selections and Actions
 
+## Time Series Model Idealization
+
 ## TODO :construction:
 
 * Spot drift correction. I have been lazy about this as my current setup has subpixel drift even over long experiments, so it's currently a nonissue for me. However, it may be important for other setups, so this functionality should be added to the toolbox for more general aplicability.
