@@ -526,7 +526,7 @@ classdef ExperimentViewer < handle
             end
             wb = waitbar(0, 'Saving experiment to file...');
             hExperiment = obj.hExperiment;
-            save(filepath, 'hExperiment', '-v7.3');
+            save(filepath, 'hExperiment', '-v7', '-nocompression');
             close(wb);
             % update figure name
             [path, file, ext] = fileparts(filepath);
