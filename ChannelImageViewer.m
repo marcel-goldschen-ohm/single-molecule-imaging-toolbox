@@ -439,6 +439,16 @@ classdef ChannelImageViewer < ImageStackViewer
                 'Separator', numImages <= 1, ...
                 'Callback', @(varargin) obj.loadNewImage());
             
+            if ~isempty(obj.hImageStack) && ~isempty(obj.hImageStack.fileInfo)
+                uimenu(menu, 'Label', 'Reload Selected Image From File', ...
+                    'Callback', @(varargin) obj.hImageStack.reload(true));
+            end
+            
+            if ~isempty(obj.hImageStack)
+                uimenu(menu, 'Label', 'Save Selected Image To File', ...
+                    'Callback', @(varargin) obj.hImageStack.save());
+            end
+            
             if numImages > 0
                 submenu = uimenu(menu, 'Label', 'Remove Image');
                 for hImage = obj.hChannel.hImages
@@ -448,22 +458,14 @@ classdef ChannelImageViewer < ImageStackViewer
                 end
             end
             
-            % selected image -------------------
             if ~isempty(obj.hImageStack)
-                if ~isempty(obj.hImageStack.fileInfo)
-                    uimenu(menu, 'Label', 'Reload Selected Image From File', ...
-                        'Separator', 'on', ...
-                        'Callback', @(varargin) obj.hImageStack.reload(true));
-                end
-
                 uimenu(menu, 'Label', 'Rename Selected Image', ...
-                    'Separator', isempty(obj.hImageStack.fileInfo), ...
                     'Callback', @(varargin) obj.hImageStack.editLabel());
+            end
                 
-                if obj.hImageStack.numFrames > 1
-                    uimenu(menu, 'Label', 'Set Selected Image Stack Frame Interval', ...
-                        'Callback', @(varargin) obj.hImageStack.editFrameInterval());
-                end
+            if ~isempty(obj.hImageStack) && obj.hImageStack.numFrames > 1
+                uimenu(menu, 'Label', 'Set Selected Image Stack Frame Interval', ...
+                    'Callback', @(varargin) obj.hImageStack.editFrameInterval());
             end
             
             % display options -------------------
