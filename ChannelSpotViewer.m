@@ -17,6 +17,7 @@ classdef ChannelSpotViewer < handle
         hAutoscaleBtn
         hShowIdealBtn
         hFilterBtn
+%         hStackDataBtn
         
         hTraceAxes
         hTraceLine
@@ -135,6 +136,9 @@ classdef ChannelSpotViewer < handle
                 'Tooltip', 'Apply Filter', ...
                 'Value', 1, ...
                 'Callback', @(varargin) obj.updateTrace());
+%             obj.hStackDataBtn = uicontrol(obj.hPanel, 'style', 'pushbutton', ...
+%                 'String', char(hex2dec('29c9')), 'Position', [0 0 20 20], ...
+%                 'Tooltip', 'Reload projection image stack data from file');
             obj.hTopBtnsLeft = [obj.hMenuBtn];
             obj.hTopBtnsRight = [obj.hFilterBtn obj.hShowIdealBtn obj.hAutoscaleBtn];
             
@@ -209,6 +213,12 @@ classdef ChannelSpotViewer < handle
             obj.updateTrace();
             obj.autoscale();
             obj.updateListeners();
+%             % projeciton image stack data indicator
+%             if isempty(obj.hChannel.hProjectionImageStack) || isempty(obj.hChannel.hProjectionImageStack.data)
+%                 obj.hStackDataBtn.BackgroundColor = [1 .6 .6];
+%             else
+%                 obj.hStackDataBtn.BackgroundColor = obj.hMenuBtn.BackgroundColor;
+%             end
         end
         
         function h = get.Parent(obj)
@@ -283,6 +293,19 @@ classdef ChannelSpotViewer < handle
             obj.updateTopText();
             obj.updateTrace();
             obj.updateListeners();
+%             % projeciton image stack data indicator
+%             if isempty(obj.hChannel.hProjectionImageStack) || isempty(obj.hChannel.hProjectionImageStack.data)
+%                 obj.hStackDataBtn.BackgroundColor = [1 .6 .6];
+%             else
+%                 obj.hStackDataBtn.BackgroundColor = obj.hMenuBtn.BackgroundColor;
+%             end
+        end
+        
+        function reloadSelectedProjectionImageStack(obj)
+            if ~isempty(obj.hChannel) && ~isempty(obj.hChannel.hProjectionImageStack)
+                obj.hChannel.hProjectionImageStack.reload(true);
+                obj.hChannel.hProjectionImageStack = obj.hChannel.hProjectionImageStack; % for notifications
+            end
         end
         
         function updateTopText(obj)
@@ -291,6 +314,9 @@ classdef ChannelSpotViewer < handle
                 str = 'tsData';
             else
                 str = hImageStack.getLabelWithInfo();
+                if isempty(hImageStack.data)
+                    str = sprintf('[NO DATA LOADED] %s', str);
+                end
             end
             obj.hTopBtn.String = str;
         end
@@ -303,7 +329,11 @@ classdef ChannelSpotViewer < handle
             menu = uicontextmenu;
             for hImage = obj.hChannel.hImages
                 if hImage.numFrames > 1
-                    uimenu(menu, 'Label', hImage.getLabelWithInfo(), ...
+                    label = hImage.getLabelWithInfo();
+                    if isempty(hImage.data)
+                        label = sprintf('[NO DATA LOADED] %s', label);
+                    end
+                    uimenu(menu, 'Label', label, ...
                         'Checked', isequal(hImage, obj.hChannel.hProjectionImageStack), ...
                         'Callback', @(varargin) obj.hChannel.setProjectionImageStack(hImage));
                 end
@@ -340,11 +370,20 @@ classdef ChannelSpotViewer < handle
                     'Separator', 'on');
                 for hImage = obj.hChannel.hImages
                     if hImage.numFrames > 1
-                        uimenu(submenu, 'Label', hImage.getLabelWithInfo(), ...
+                        label = hImage.getLabelWithInfo();
+                        if isempty(hImage.data)
+                            label = sprintf('[NO DATA LOADED] %s', label);
+                        end
+                        uimenu(submenu, 'Label', label, ...
                             'Checked', isequal(hImage, obj.hChannel.hProjectionImageStack), ...
                             'Callback', @(varargin) obj.hChannel.setProjectionImageStack(hImage));
                     end
                 end
+            end
+            
+            if ~isempty(obj.hChannel.hProjectionImageStack) && ~isempty(obj.hChannel.hProjectionImageStack.fileInfo)
+                uimenu(menu, 'Label', 'Reload Selected Projection Image Stack From File', ...
+                    'Callback', @(varargin) obj.reloadSelectedProjectionImageStack());
             end
             
             uimenu(menu, 'Label', 'Set Sample Interval', ...

@@ -151,6 +151,14 @@ classdef ChannelImageViewer < ImageStackViewer
                 obj.hImageStack = hNewImage;
             end
         end
+        function reloadSelectedImage(obj)
+            if ~isempty(obj.hImageStack)
+                obj.hImageStack.reload(true);
+                if isequal(obj.hImageStack, obj.hChannel.hProjectionImageStack)
+                    obj.hChannel.hProjectionImageStack = obj.hImageStack; % for notifications
+                end
+            end
+        end
         function removeImage(obj, hImage)
             obj.hChannel.removeImage(hImage, true);
             if ~isvalid(obj.hImageStack)
@@ -441,7 +449,7 @@ classdef ChannelImageViewer < ImageStackViewer
             
             if ~isempty(obj.hImageStack) && ~isempty(obj.hImageStack.fileInfo)
                 uimenu(menu, 'Label', 'Reload Selected Image From File', ...
-                    'Callback', @(varargin) obj.hImageStack.reload(true));
+                    'Callback', @(varargin) obj.reloadSelectedImage());
             end
             
             if ~isempty(obj.hImageStack)

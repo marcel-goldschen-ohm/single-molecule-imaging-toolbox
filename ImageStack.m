@@ -255,12 +255,37 @@ classdef ImageStack < handle
                 defaults = {};
                 if nframes > 1
                     labels{end+1} = ['Frames 1:' num2str(nframes) ' (first:last, first:stride:last, empty=all)'];
-                    defaults{end+1} = ['1:' num2str(nframes)];
+                    if ~exist('frames', 'var') || isempty(frames)
+                        defaults{end+1} = sprintf('1:%d', nframes);
+                    else
+                        stride = unique(diff(frames));
+                        if numel(stride) == 1
+                            if stride == 1
+                                defaults{end+1} = sprintf('%d:%d', frames(1), frames(end));
+                            else
+                                defaults{end+1} = sprintf('%d:%d:%d', frames(1), stride, frames(end));
+                            end
+                        else
+                            defaults{end+1} = 'use currently specified frames';
+                        end
+                    end
                 end
                 labels{end+1} = 'Pixel Region (rows first:last, columns first:last), empty=full';
-                defaults{end+1} = ['1:' num2str(w) ', 1:' num2str(h)];
+                if ~exist('pixelRegion', 'var') || isempty(pixelRegion)
+                    defaults{end+1} = sprintf('1:%d, 1:%d', h, w);
+                else
+                    try
+                        rowlim = pixelRegion{1};
+                        collim = pixelRegion{2};
+                        defaults{end+1} = sprintf('%d:%d, %d:%d', rowlim(1), rowlim(2), collim(1), collim(2));
+                    catch
+                        defaults{end+1} = sprintf('1:%d, 1:%d', h, w);
+                    end
+                end
                 answer = inputdlg(labels, 'Load Image Stack Options', 1, defaults);
-                if ~isempty(answer)
+                if isempty(answer)
+                    return
+                else
                     if nframes > 1
                         framesAnswer = answer{1};
                         pixelRegionAnswer = answer{2};
@@ -270,6 +295,8 @@ classdef ImageStack < handle
                     end
                     if isempty(framesAnswer)
                         frames = [];
+                    elseif framesAnswer == "use currently specified frames"
+                        % leave frames as is
                     else
                         fields = strsplit(framesAnswer, ':');
                         if numel(fields) == 1
