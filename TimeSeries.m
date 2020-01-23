@@ -18,7 +18,7 @@ classdef TimeSeries
     end
     
     properties (Dependent)
-        time % time array (same size as data)
+        time % time array (same size as rawData)
         data % offset and scaled rawData
         mask % logical mask array (same size as data)
         maskedData % data with masked points set to nan
