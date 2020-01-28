@@ -20,7 +20,12 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
         isMasked = false; % 1x1 OR size(raw.data)
         
         % map of named selections (logical or indices)
+        % (built in constructor)
         selections
+        
+        % model of time series data (generic struct for flexibility)
+        % e.g. Markov model
+        model = struct.empty;
     end
     
     properties (Dependent)
@@ -39,6 +44,7 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
     methods
         function this = TimeSeriesExt()
             %TIMESERIESEXT Constructor.
+            
             this.selections = containers.Map();
         end
         
