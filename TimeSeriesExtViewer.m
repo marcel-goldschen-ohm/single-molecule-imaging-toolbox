@@ -237,6 +237,232 @@ classdef TimeSeriesExtViewer < handle
             obj.visibleTsIndices = idx;
             obj.updateUI();
         end
+        
+        function set.tsLineOffset(obj, yoffset)
+            if isempty(yoffset)
+                yoffset = 0;
+            end
+            obj.tsLineOffset = yoffset;
+            obj.updateUI();
+        end
+        function setTsLineOffsetDialog(obj)
+            answer = inputdlg({'Y axis offset between data lines'}, 'Line Offset', 1, {num2str(obj.tsLineOffset)});
+            if ~isempty(answer)
+                obj.tsLineOffset = str2num(answer{1});
+            end
+        end
+        
+        function set.tsWrapWidth(obj, w)
+            if isempty(w) || w <= 0
+                w = inf;
+            end
+            obj.tsWrapWidth = w;
+            obj.updateUI();
+        end
+        function setTsWrapWidthDialog(obj)
+            answer = inputdlg({'Wrap width (inf => no wrap):'}, 'Wrap Width', 1, {num2str(obj.tsWrapWidth)});
+            if ~isempty(answer)
+                obj.tsWrapWidth = str2num(answer{1});
+            end
+        end
+        
+        function set.isShowHist(obj, tf)
+            obj.isShowHist = tf;
+            obj.resize();
+        end
+        function toggleShowHist(obj)
+            obj.isShowHist = ~obj.isShowHist;
+        end
+        
+        function set.sumSamplesN(obj, N)
+            if isempty(N)
+                N = 1;
+            end
+            obj.sumSamplesN = N;
+            obj.updateUI();
+        end
+        function setSumSamplesN(obj, N)
+            if ~exist('N', 'var')
+                answer = inputdlg({'Sum blocks of N samples:'}, ...
+                    'Sum Sample Blocks', 1, {num2str(obj.sumSamplesN)});
+                if isempty(answer)
+                    return
+                end
+                N = str2num(answer{1});
+            end
+            obj.sumSamplesN = N;
+        end
+        
+        function set.downsampleN(obj, N)
+            if isempty(N)
+                N = 1;
+            end
+            obj.downsampleN = N;
+            obj.updateUI();
+        end
+        function set.upsampleN(obj, N)
+            if isempty(N)
+                N = 1;
+            end
+            obj.upsampleN = N;
+            obj.updateUI();
+        end
+        function setResampling(obj, P, Q)
+            if ~exist('P', 'var') || ~exist('Q', 'var')
+                answer = inputdlg({'Resample at P/Q original rate (1/1 => no resampling):'}, ...
+                    'Resample', 1, {'1/1'});
+                if isempty(answer)
+                    return
+                end
+                try
+                    PQ = strsplit(answer{1}, '/');
+                    P = str2num(PQ{1});
+                    Q = str2num(PQ{2});
+                catch
+                    return
+                end
+            end
+            if isempty(P)
+                P = 1;
+            end
+            if isempty(Q)
+                Q = 1;
+            end
+            obj.upsampleN = P;
+            obj.downsampleN = Q;
+        end
+        
+        function h = get.Parent(obj)
+            h = obj.hPanel.Parent;
+        end
+        function set.Parent(obj, h)
+            obj.hPanel.Parent = h;
+        end
+        function bbox = get.Position(obj)
+            bbox = obj.hPanel.Position;
+        end
+        function set.Position(obj, bbox)
+            obj.hPanel.Position = bbox;
+            obj.resize();
+        end
+        function vis = get.Visible(obj)
+            vis = obj.hPanel.Visible;
+        end
+        function set.Visible(obj, vis)
+            obj.hPanel.Visible = vis;
+        end
+        
+        function tf = get.isShowRaw(obj)
+            tf = obj.hShowRawOrBtn.String == "R";
+        end
+        function tf = get.isShowBaselined(obj)
+            tf = obj.hShowRawOrBtn.String == "B";
+        end
+        function tf = get.isShowBaselinedAndScaled(obj)
+            tf = obj.hShowRawOrBtn.String == "BS";
+        end
+        function showRaw(obj)
+            obj.hShowRawOrBtn.String = "R";
+            obj.updateUI();
+        end
+        function showBaselined(obj)
+            obj.hShowRawOrBtn.String = "B";
+            obj.updateUI();
+        end
+        function showBaselinedAndScaled(obj)
+            obj.hShowRawOrBtn.String = "BS";
+            obj.updateUI();
+        end
+        function tf = get.isShowMasked(obj)
+            tf = obj.hShowMaskedBtn.Value > 0;
+        end
+        function tf = get.isShowZero(obj)
+            tf = obj.hShowZeroBtn.Value > 0;
+        end
+        function tf = get.isShowBaseline(obj)
+            tf = obj.hShowBaselineBtn.Value > 0;
+        end
+        function tf = get.isShowIdeal(obj)
+            tf = obj.hShowIdealBtn.Value > 0;
+        end
+        function tf = get.isApplyFilter(obj)
+            tf = obj.hApplyFilterBtn.Value > 0;
+        end
+        
+        function resize(obj)
+            %RESIZE Reposition all graphics objects within hPanel.
+            
+            % reposition image axes within panel
+            bbox = getpixelposition(obj.hPanel);
+            margin = 2;
+            lineh = 20;
+            x = margin + 40;
+            y = margin + lineh + margin;
+            w = bbox(3) - margin - x;
+            h = bbox(4) - margin - lineh - margin - y;
+            if ~isempty(obj.hTraceAxes.YLabel.String)
+                x = x + lineh;
+                w = w - lineh;
+            end
+            if ~isempty(obj.hTraceAxes.XLabel.String)
+                y = y + lineh;
+                h = h - lineh;
+            end
+            if obj.isShowHist
+                hw = obj.hHistAxes.Position(3);
+                obj.hTraceAxes.Position = [x y w-hw-margin h];
+                obj.hHistAxes.Position = [x+w-hw y hw h];
+                obj.hHistAxes.Visible = 'on';
+                [obj.hHistAxes.Children.Visible] = deal('on');
+            else
+                obj.hTraceAxes.Position = [x y w-10 h];
+                obj.hHistAxes.Visible = 'off';
+                [obj.hHistAxes.Children.Visible] = deal('off');
+            end
+            % get actual displayed image axes position.
+            pos = Utilities.plotboxpos(obj.hTraceAxes);
+            x = pos(1); y = pos(2); w = pos(3); h = pos(4);
+            
+            % top buttons
+            by = y + h + margin;
+            bx = margin;%x + 35;
+            obj.hMenuBtn.Position = [bx by lineh lineh];
+            bx = x + w - 3*lineh;
+            obj.hAutoscaleXBtn.Position = [bx by lineh lineh];
+            obj.hAutoscaleYBtn.Position = [bx+lineh by lineh lineh];
+            obj.hAutoscaleXYBtn.Position = [bx+2*lineh by lineh lineh];
+            bx = bx - 5 - 4*lineh;
+            obj.hApplyFilterBtn.Position = [bx by lineh lineh];
+            obj.hShowIdealBtn.Position = [bx+lineh by lineh lineh];
+            obj.hShowBaselineBtn.Position = [bx+2*lineh by lineh lineh];
+            obj.hShowZeroBtn.Position = [bx+3*lineh by lineh lineh];
+            bx = bx - 5 - 2*lineh;
+            obj.hShowRawOrBtn.Position = [bx by lineh lineh];
+            obj.hShowMaskedBtn.Position = [bx+lineh by lineh lineh];
+            if isvalid(obj.hVisibleTsEdit) && obj.hVisibleTsEdit.Visible == "on"
+                bx = bx - 5 - 4*lineh;
+                obj.hPrevTsBtn.Position = [bx by lineh lineh];
+                obj.hVisibleTsEdit.Position = [bx+lineh by 2*lineh lineh];
+                obj.hNextTsBtn.Position = [bx+3*lineh by lineh lineh];
+            end
+            if obj.hTopText.Visible == "on"
+                obj.hTopText.Position = [x+35 by bx-5-(x+35) lineh];
+            end
+            if obj.isShowHist
+                bx = x + w + margin + hw - lineh - 80;
+                obj.hHistNumBinsText.Position = [bx by 30 lineh];
+                obj.hHistNumBinsEdit.Position = [bx+30 by 50 lineh];
+                obj.hHistSqrtCountsBtn.Position = [bx+80 by lineh lineh];
+                obj.hHistNumBinsText.Visible = 'on';
+                obj.hHistNumBinsEdit.Visible = 'on';
+                obj.hHistSqrtCountsBtn.Visible = 'on';
+            else
+                obj.hHistNumBinsText.Visible = 'off';
+                obj.hHistNumBinsEdit.Visible = 'off';
+                obj.hHistSqrtCountsBtn.Visible = 'off';
+            end
+        end
+        
         function updateUI(obj)
             numTs = numel(obj.ts);
             % delete unneeded graphics objects
@@ -415,9 +641,13 @@ classdef TimeSeriesExtViewer < handle
                 end
                 % ideal
                 if obj.isShowIdeal
-                    % ... TODO
-                    ideal = [];
-                    % ideal = ... + y0;
+                    try
+                        ideal = obj.ts(t).model.ideal;
+                        [~, ideal] = obj.getResampledTs(zeros(size(ideal)), ideal);
+                        ideal = ideal + y0;
+                    catch
+                        ideal = [];
+                    end
                 else
                     ideal = [];
                 end
@@ -452,8 +682,10 @@ classdef TimeSeriesExtViewer < handle
                 nbins = str2num(obj.hHistNumBinsEdit.String);
                 if nowrap
                     ynn = y(~isnan(y));
+                    yvis = y;
                 else
                     ynn = wy(~isnan(wy));
+                    yvis = wy;
                 end
                 ylim = minmax(reshape(ynn, 1, []));
                 ylim = ylim + [-1 1] .* (0.1 * diff(ylim));
@@ -481,16 +713,19 @@ classdef TimeSeriesExtViewer < handle
                     end
                     if nowrap
                         idealnn = ideal(~isnan(ideal));
+                        idealvis = ideal;
                     else
                         idealnn = wideal(~isnan(wideal));
+                        idealvis = wideal;
                     end
                     ustates = unique(idealnn);
                     nustates = numel(ustates);
                     fits = zeros(numel(bins), nustates);
                     npts = numel(idealnn);
                     for k = 1:nustates
-                        idx = idealnn == ustates(k);
-                        [mu, sigma] = normfit(ynn(idx));
+                        idx = idealvis == ustates(k);
+                        yk = yvis(idx);
+                        [mu, sigma] = normfit(yk(~isnan(yk)));
                         weight = double(sum(idx)) / npts * area;
                         fits(:,k) = weight .* normpdf(bins, mu, sigma);
                     end
@@ -524,155 +759,6 @@ classdef TimeSeriesExtViewer < handle
                 end
             end
         end
-        
-        function set.tsLineOffset(obj, yoffset)
-            obj.tsLineOffset = yoffset;
-            obj.updateUI();
-        end
-        function setTsLineOffsetDialog(obj)
-            answer = inputdlg({'Y axis offset between data lines'}, 'Line Offset', 1, {num2str(obj.tsLineOffset)});
-            if ~isempty(answer)
-                obj.tsLineOffset = str2num(answer{1});
-            end
-        end
-        
-        function set.tsWrapWidth(obj, w)
-            if isempty(w) || w <= 0
-                w = inf;
-            end
-            obj.tsWrapWidth = w;
-            obj.updateUI();
-        end
-        function setTsWrapWidthDialog(obj)
-            answer = inputdlg({'Wrap width (inf => no wrap):'}, 'Wrap Width', 1, {num2str(obj.tsWrapWidth)});
-            if ~isempty(answer)
-                obj.tsWrapWidth = str2num(answer{1});
-            end
-        end
-        
-        function set.isShowHist(obj, tf)
-            obj.isShowHist = tf;
-            obj.resize();
-        end
-        function toggleShowHist(obj)
-            obj.isShowHist = ~obj.isShowHist;
-        end
-        
-        function set.sumSamplesN(obj, N)
-            if isempty(N)
-                N = 1;
-            end
-            obj.sumSamplesN = N;
-            obj.updateUI();
-        end
-        function setSumSamplesN(obj, N)
-            if ~exist('N', 'var')
-                answer = inputdlg({'Sum blocks of N samples:'}, ...
-                    'Sum Sample Blocks', 1, {num2str(obj.sumSamplesN)});
-                if isempty(answer)
-                    return
-                end
-                N = str2num(answer{1});
-            end
-            obj.sumSamplesN = N;
-        end
-        
-        function set.downsampleN(obj, N)
-            if isempty(N)
-                N = 1;
-            end
-            obj.downsampleN = N;
-            obj.updateUI();
-        end
-        function set.upsampleN(obj, N)
-            if isempty(N)
-                N = 1;
-            end
-            obj.upsampleN = N;
-            obj.updateUI();
-        end
-        function setResampling(obj, P, Q)
-            if ~exist('P', 'var') || ~exist('Q', 'var')
-                answer = inputdlg({'Resample at P/Q original rate (1/1 => no resampling):'}, ...
-                    'Resample', 1, {'1/1'});
-                if isempty(answer)
-                    return
-                end
-                try
-                    PQ = strsplit(answer{1}, '/');
-                    P = str2num(PQ{1});
-                    Q = str2num(PQ{2});
-                catch
-                    return
-                end
-            end
-            if isempty(P)
-                P = 1;
-            end
-            if isempty(Q)
-                Q = 1;
-            end
-            obj.upsampleN = P;
-            obj.downsampleN = Q;
-        end
-        
-        function h = get.Parent(obj)
-            h = obj.hPanel.Parent;
-        end
-        function set.Parent(obj, h)
-            obj.hPanel.Parent = h;
-        end
-        function bbox = get.Position(obj)
-            bbox = obj.hPanel.Position;
-        end
-        function set.Position(obj, bbox)
-            obj.hPanel.Position = bbox;
-            obj.resize();
-        end
-        function vis = get.Visible(obj)
-            vis = obj.hPanel.Visible;
-        end
-        function set.Visible(obj, vis)
-            obj.hPanel.Visible = vis;
-        end
-        
-        function tf = get.isShowRaw(obj)
-            tf = obj.hShowRawOrBtn.String == "R";
-        end
-        function tf = get.isShowBaselined(obj)
-            tf = obj.hShowRawOrBtn.String == "B";
-        end
-        function tf = get.isShowBaselinedAndScaled(obj)
-            tf = obj.hShowRawOrBtn.String == "BS";
-        end
-        function showRaw(obj)
-            obj.hShowRawOrBtn.String = "R";
-            obj.updateUI();
-        end
-        function showBaselined(obj)
-            obj.hShowRawOrBtn.String = "B";
-            obj.updateUI();
-        end
-        function showBaselinedAndScaled(obj)
-            obj.hShowRawOrBtn.String = "BS";
-            obj.updateUI();
-        end
-        function tf = get.isShowMasked(obj)
-            tf = obj.hShowMaskedBtn.Value > 0;
-        end
-        function tf = get.isShowZero(obj)
-            tf = obj.hShowZeroBtn.Value > 0;
-        end
-        function tf = get.isShowBaseline(obj)
-            tf = obj.hShowBaselineBtn.Value > 0;
-        end
-        function tf = get.isShowIdeal(obj)
-            tf = obj.hShowIdealBtn.Value > 0;
-        end
-        function tf = get.isApplyFilter(obj)
-            tf = obj.hApplyFilterBtn.Value > 0;
-        end
-        
         function [x, y] = getTsAsShown(obj, t)
             x = obj.ts(t).time;
             if obj.isShowRaw
@@ -808,80 +894,6 @@ classdef TimeSeriesExtViewer < handle
                 sel(end+1:n) = false;
             elseif length(sel) > n
                 sel(n+1:end) = [];
-            end
-        end
-        
-        function resize(obj)
-            %RESIZE Reposition all graphics objects within hPanel.
-            
-            % reposition image axes within panel
-            bbox = getpixelposition(obj.hPanel);
-            margin = 2;
-            lineh = 20;
-            x = margin + 40;
-            y = margin + lineh + margin;
-            w = bbox(3) - margin - x;
-            h = bbox(4) - margin - lineh - margin - y;
-            if ~isempty(obj.hTraceAxes.YLabel.String)
-                x = x + lineh;
-                w = w - lineh;
-            end
-            if ~isempty(obj.hTraceAxes.XLabel.String)
-                y = y + lineh;
-                h = h - lineh;
-            end
-            if obj.isShowHist
-                hw = obj.hHistAxes.Position(3);
-                obj.hTraceAxes.Position = [x y w-hw-margin h];
-                obj.hHistAxes.Position = [x+w-hw y hw h];
-                obj.hHistAxes.Visible = 'on';
-                [obj.hHistAxes.Children.Visible] = deal('on');
-            else
-                obj.hTraceAxes.Position = [x y w-10 h];
-                obj.hHistAxes.Visible = 'off';
-                [obj.hHistAxes.Children.Visible] = deal('off');
-            end
-            % get actual displayed image axes position.
-            pos = Utilities.plotboxpos(obj.hTraceAxes);
-            x = pos(1); y = pos(2); w = pos(3); h = pos(4);
-            
-            % top buttons
-            by = y + h + margin;
-            bx = margin;%x + 35;
-            obj.hMenuBtn.Position = [bx by lineh lineh];
-            bx = x + w - 3*lineh;
-            obj.hAutoscaleXBtn.Position = [bx by lineh lineh];
-            obj.hAutoscaleYBtn.Position = [bx+lineh by lineh lineh];
-            obj.hAutoscaleXYBtn.Position = [bx+2*lineh by lineh lineh];
-            bx = bx - 5 - 4*lineh;
-            obj.hApplyFilterBtn.Position = [bx by lineh lineh];
-            obj.hShowIdealBtn.Position = [bx+lineh by lineh lineh];
-            obj.hShowBaselineBtn.Position = [bx+2*lineh by lineh lineh];
-            obj.hShowZeroBtn.Position = [bx+3*lineh by lineh lineh];
-            bx = bx - 5 - 2*lineh;
-            obj.hShowRawOrBtn.Position = [bx by lineh lineh];
-            obj.hShowMaskedBtn.Position = [bx+lineh by lineh lineh];
-            if isvalid(obj.hVisibleTsEdit) && obj.hVisibleTsEdit.Visible == "on"
-                bx = bx - 5 - 4*lineh;
-                obj.hPrevTsBtn.Position = [bx by lineh lineh];
-                obj.hVisibleTsEdit.Position = [bx+lineh by 2*lineh lineh];
-                obj.hNextTsBtn.Position = [bx+3*lineh by lineh lineh];
-            end
-            if obj.hTopText.Visible == "on"
-                obj.hTopText.Position = [x+35 by bx-5-(x+35) lineh];
-            end
-            if obj.isShowHist
-                bx = x + w + margin + hw - lineh - 80;
-                obj.hHistNumBinsText.Position = [bx by 30 lineh];
-                obj.hHistNumBinsEdit.Position = [bx+30 by 50 lineh];
-                obj.hHistSqrtCountsBtn.Position = [bx+80 by lineh lineh];
-                obj.hHistNumBinsText.Visible = 'on';
-                obj.hHistNumBinsEdit.Visible = 'on';
-                obj.hHistSqrtCountsBtn.Visible = 'on';
-            else
-                obj.hHistNumBinsText.Visible = 'off';
-                obj.hHistNumBinsEdit.Visible = 'off';
-                obj.hHistSqrtCountsBtn.Visible = 'off';
             end
         end
         

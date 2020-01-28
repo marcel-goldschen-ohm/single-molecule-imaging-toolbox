@@ -25,7 +25,7 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
         
         % model of time series data (generic struct for flexibility)
         % e.g. Markov model
-        model = struct.empty;
+        model = struct();
     end
     
     properties (Dependent)
