@@ -1,8 +1,5 @@
 classdef TimeSeriesExtViewer < handle
     %TIMESERIESEXTVIEWER
-    %
-    %   TODO:
-    %   - brush data handle resampling
     
     properties
         % time series data
@@ -693,7 +690,7 @@ classdef TimeSeriesExtViewer < handle
             if ~obj.isShowMasked && any(obj.ts(t).isMasked)
                 y(obj.ts(t).mask) = nan;
             end
-            % resample
+            % sum sample blocks
             if obj.sumSamplesN > 1
                 N = obj.sumSamplesN;
                 n = floor(double(size(y,1)) / N);
@@ -704,21 +701,74 @@ classdef TimeSeriesExtViewer < handle
                 end
                 x = x(1:N:n*N);
             end
-            if obj.downsampleN > 1 || obj.upsampleN > 1
+            % resample
+            if (obj.downsampleN > 1 || obj.upsampleN > 1) ...
+                    && (obj.downsampleN ~= obj.upsampleN)
                 if obj.upsampleN > 1
+                    N = obj.upsampleN;
                     x0 = x;
                     dx = diff(x0);
-                    dx(end+1) = dx(end); % assume same sample rate on last point
-                    dx = dx ./ obj.upsampleN;
-                    x = upsample(x0, obj.upsampleN);
-                    for k = 2:obj.upsampleN
-                        x(k:obj.upsampleN:end) = x0 + k .* dx;
+                    dx = double(dx) ./ N;
+                    x = upsample(x0, N);
+                    x = x(1:end-(N-1));
+                    for k = 2:N
+                        x(k:N:end-1) = x0(1:end-1) + (k-1) .* dx;
                     end
                 end
                 if obj.downsampleN > 1
                     x = downsample(x, obj.downsampleN);
                 end
                 y = resample(y, obj.upsampleN, obj.downsampleN);
+                y = y(1:length(x));
+            end
+        end
+        function sel = getBrushedSelectionForRawData(obj, t)
+            sel = logical(obj.hTraceLine(t).BrushData);
+            if isempty(sel)
+                return
+            elseif ~any(sel)
+                sel = logical([]);
+                return
+            end
+            
+            % convert sel from plotted indices to original raw data indices
+            
+            % wrap
+            if ~isinf(obj.tsWrapWidth)
+                x = obj.ts(t).time;
+                if x(end) - x(1) > obj.tsWrapWidth
+                    wrapNumPts = find(x - x(1) > obj.tsWrapWidth, 1) - 1;
+                    sel(wrapNumPts+1:wrapNumPts+1:end) = [];
+                end
+            end
+            % resample
+            if (obj.downsampleN > 1 || obj.upsampleN > 1) ...
+                    && (obj.downsampleN ~= obj.upsampleN)
+                if obj.downsampleN > 1
+                    N = obj.downsampleN;
+                    sel = reshape(repmat(reshape(sel, 1, []), N, 1), 1, []);
+                end
+                if obj.upsampleN > 1
+                    N = obj.upsampleN;
+                    sel = reshape(sel, 1, []);
+                    pad = mod(length(sel), N);
+                    if pad > 0
+                        sel(end+1:end+N-pad) = false;
+                    end
+                    sel = any(reshape(sel, N, []), 1);
+                end
+            end
+            % sum sample blocks
+            if obj.sumSamplesN > 1
+                N = obj.sumSamplesN;
+                sel = reshape(repmat(reshape(sel, 1, []), N, 1), 1, []);
+            end
+            % resampling may have left sel with the wrong number of pts
+            n = size(obj.ts(t).raw.data, 1);
+            if length(sel) < n
+                sel(end+1:n) = false;
+            elseif length(sel) > n
+                sel(n+1:end) = [];
             end
         end
         
@@ -826,6 +876,8 @@ classdef TimeSeriesExtViewer < handle
                 uimenu(submenu, 'Label', key, ...
                     'Callback', @(varargin) obj.removeSelection(key));
             end
+            uimenu(menu, 'Label', 'Select All', ...
+                'Callback', @(varargin) obj.selectAll());
             
             submenu = uimenu(menu, 'Label', 'Mask', ...
                 'Separator', 'on');
@@ -1098,7 +1150,7 @@ classdef TimeSeriesExtViewer < handle
             end
             for t = obj.visibleTsIndices
                 try
-                    sel = obj.getBrushData(t);
+                    sel = obj.getBrushedSelectionForRawData(t);
                     if isempty(sel)
                         continue
                     end
@@ -1111,6 +1163,14 @@ classdef TimeSeriesExtViewer < handle
             for t = obj.visibleTsIndices
                 if obj.ts(t).selections.isKey(name)
                     obj.ts(t).selections.remove(name);
+                end
+            end
+        end
+        function selectAll(obj)
+            for t = obj.visibleTsIndices
+                try
+                    obj.hTraceLine(t).BrushData = ones(size(obj.hTraceLine(t).YData), 'uint8');
+                catch
                 end
             end
         end
@@ -1175,7 +1235,7 @@ classdef TimeSeriesExtViewer < handle
         function baselineFlat(obj)
             for t = obj.visibleTsIndices
                 try
-                    sel = obj.getBrushData(t);
+                    sel = obj.getBrushedSelectionForRawData(t);
                     if isempty(sel)
                         continue
                     end
@@ -1191,7 +1251,7 @@ classdef TimeSeriesExtViewer < handle
         function baselinePolynomial(obj, order)
             for t = obj.visibleTsIndices
                 try
-                    sel = obj.getBrushData(t);
+                    sel = obj.getBrushedSelectionForRawData(t);
                     if isempty(sel)
                         continue
                     end
@@ -1223,7 +1283,7 @@ classdef TimeSeriesExtViewer < handle
         function baselineSpline(obj, numSegments)
             for t = obj.visibleTsIndices
                 try
-                    sel = obj.getBrushData(t);
+                    sel = obj.getBrushedSelectionForRawData(t);
                     if isempty(sel)
                         continue
                     end
@@ -1262,7 +1322,7 @@ classdef TimeSeriesExtViewer < handle
             end
             for t = obj.visibleTsIndices
                 try
-                    sel = obj.getBrushData(t);
+                    sel = obj.getBrushedSelectionForRawData(t);
                     if isempty(sel)
                         continue
                     end
@@ -1305,23 +1365,6 @@ classdef TimeSeriesExtViewer < handle
                 end
             end
             obj.updateUI();
-        end
-        
-        function sel = getBrushData(obj, t)
-            sel = logical(obj.hTraceLine(t).BrushData);
-            if isempty(sel)
-                return
-            elseif ~any(sel)
-                sel = logical([]);
-                return
-            elseif ~isinf(obj.tsWrapWidth)
-                x = obj.ts(t).time;
-                if x(end) - x(1) > obj.tsWrapWidth
-                    % adjust sel to account for wrap
-                    wrapNumPts = find(x - x(1) > obj.tsWrapWidth, 1) - 1;
-                    sel(wrapNumPts+1:wrapNumPts+1:end) = [];
-                end
-            end
         end
         
         function designDigitalFilter(obj)
