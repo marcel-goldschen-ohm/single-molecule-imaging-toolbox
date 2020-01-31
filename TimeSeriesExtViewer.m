@@ -269,6 +269,7 @@ classdef TimeSeriesExtViewer < handle
         function set.isShowHist(obj, tf)
             obj.isShowHist = tf;
             obj.resize();
+            obj.updateUI();
         end
         function toggleShowHist(obj)
             obj.isShowHist = ~obj.isShowHist;
@@ -464,55 +465,20 @@ classdef TimeSeriesExtViewer < handle
         end
         
         function updateUI(obj)
-            numTs = numel(obj.ts);
-            % delete unneeded graphics objects
-            if numel(obj.hTraceLine) > numTs
-                delete(obj.hTraceLine(numTs+1:end));
-                delete(obj.hTraceIdealLine(numTs+1:end));
-                delete(obj.hHistBar(numTs+1:end));
-                delete(obj.hHistIdealLines(numTs+1:end));
-            end
+            % make sure we have plot objects for each time series and get
+            % rid of any extra
+            obj.addOrRemovePlotObjectsToMatchTimeSeries();
+            
             % default text in histogram is off, we'll turn it on as needed
             obj.hHistUpperRightText.Visible = 'off';
             obj.hHistUpperRightText.String = '';
-            % keep track of colors used
+            
             colorIndex = 1;
-            % offset between multiple or wrapped time series
-            y0 = 0;
-            % loop over each time series
+            y0 = 0; % offset between multiple or wrapped time series
+            
+            numTs = numel(obj.ts);
             for t = 1:numTs
-                % create graphics objects for this time series if needed
-                if numel(obj.hTraceLine) < t
-                    obj.hTraceZeroLine(t) = line(obj.hTraceAxes, nan, nan, ...
-                        'LineStyle', '-', 'Color', [0.5 0.5 0.5], ...
-                        'HitTest', 'off', 'PickableParts', 'none', ...
-                        'Visible', 'off');
-                    obj.hTraceLine(t) = plot(obj.hTraceAxes, nan, nan, ...
-                        'LineStyle', '-', ...
-                        'HitTest', 'off', 'PickableParts', 'none', ...
-                        'Visible', 'off');
-                    obj.hTraceBaseLine(t) = line(obj.hTraceAxes, nan, nan, ...
-                        'LineStyle', '--', 'Color', [0 0 0], ...
-                        'HitTest', 'off', 'PickableParts', 'none', ...
-                        'Visible', 'off');
-                    obj.hTraceIdealLine(t) = line(obj.hTraceAxes, nan, nan, ...
-                        'LineStyle', '-', ...
-                        'LineWidth', 1.5, ...
-                        'HitTest', 'off', 'PickableParts', 'none', ...
-                        'Visible', 'off');
-                    obj.hHistBar(t) = barh(obj.hHistAxes, nan, nan, ...
-                        'BarWidth', 1, ...
-                        'LineStyle', 'none', ...
-                        'FaceAlpha', 0.5, ...
-                        'HitTest', 'off', 'PickableParts', 'none', ...
-                        'Visible', 'off');
-                    obj.hHistIdealLines(t) = line(obj.hHistAxes, nan, nan, ...
-                        'LineStyle', '-', ...
-                        'LineWidth', 1.5, ...
-                        'HitTest', 'off', 'PickableParts', 'none', ...
-                        'Visible', 'off');
-                end
-                % get the time series data
+                % get the time series data to display
                 try
                     if find(obj.visibleTsIndices == t, 1)
                         [x, y] = obj.getTsAsShown(t);
@@ -547,217 +513,304 @@ classdef TimeSeriesExtViewer < handle
                     obj.hHistIdealLines(t).YData = nan;
                     continue
                 end
-                % trace wrap?
-                nowrap = isinf(obj.tsWrapWidth) || x(end) - x(1) <= obj.tsWrapWidth;
-                if ~nowrap
-                    wrapNumPts = find(x - x(1) > obj.tsWrapWidth, 1) - 1;
-                    wrapNumSegments = ceil(double(length(y)) / wrapNumPts);
-                end
-                % zero line (mostly for offset time series)
-                if obj.isShowZero
-                    if nowrap
-                        obj.hTraceZeroLine(t).XData = [x(1); x(end)];
-                        obj.hTraceZeroLine(t).YData = [y0; y0];
-                    else
-                        obj.hTraceZeroLine(t).XData = ...
-                            repmat([x(1); x(1) + obj.tsWrapWidth; nan], wrapNumSegments, 1);
-                        obj.hTraceZeroLine(t).YData = reshape( ...
-                            repmat([y0; y0; nan], 1, wrapNumSegments) ...
-                            + repmat([obj.tsLineOffset; obj.tsLineOffset; nan], 1, wrapNumSegments) ...
-                            .* repmat(0:wrapNumSegments-1, 3, 1), ...
-                            [], 1);
-                    end
-                    obj.hTraceZeroLine(t).Visible = 'on';
-                else
-                    % hide uneeded zero line
-                    obj.hTraceZeroLine(t).Visible = 'off';
-                    obj.hTraceZeroLine(t).XData = nan;
-                    obj.hTraceZeroLine(t).YData = nan;
-                end
-                % offset time series data
-                if obj.tsLineOffset ~= 0
+                if y0
+                    % offset time series data (for multiple or wrapped
+                    % traces)
                     y = y + y0;
                 end
-                % plot time series data
-                if nowrap
-                    obj.hTraceLine(t).XData = x;
-                    obj.hTraceLine(t).YData = y;
-                else
-                    % wrap trace every so many points
-                    [wx, wy] = TimeSeriesExtViewer.wrap(x, y, wrapNumPts, obj.tsLineOffset);
-                    obj.hTraceLine(t).XData = wx;
-                    obj.hTraceLine(t).YData = wy;
-                end
+                
+                % wrapped segments? {} => no wrapping
+                wrapSegIdx = obj.getWrapSegmentIndices(x);
+                
+                obj.updateZeroLine(t, x, y0, wrapSegIdx);
+                
+                obj.updateTraceLine(t, x, y, wrapSegIdx);
                 if obj.tsLineOffset == 0
-                    % if we're not offsetting multiple time series,
-                    % give each time series a unique color
+                    % unique colors for overlaid traces
                     obj.hTraceLine(t).Color = obj.colors(colorIndex,:);
                     colorIndex = colorIndex + 1;
                 else
-                    % if we are offsetting multiple time series, use the
-                    % same color for all of them
+                    % same color for offset traces
                     obj.hTraceLine(t).Color = obj.colors(1,:);
                 end
-                obj.hTraceLine(t).Visible = 'on';
-                % baseline
-                if obj.isShowBaseline
-                    if obj.isShowRaw
-                        % baseline on top of raw data
-                        offset = obj.ts(t).offset;
-                        if numel(offset) > 1
-                            if obj.sumSamplesN > 1
-                                N = obj.sumSamplesN;
-                                n = floor(double(size(offset,1)) / N);
-                                offset0 = offset;
-                                offset = offset0(1:N:n*N,:);
-                                for k = 2:N
-                                    offset = offset + offset0(k:N:n*N,:);
-                                end
-                            end
-                            if obj.downsampleN > 1 || obj.upsampleN > 1
-                                offset = resample(offset, obj.upsampleN, obj.downsampleN);
-                            end
-                        end
-                        baseline = zeros(size(y)) - offset + y0;
-                    else
-                        % baselined data will have a baseline at zero (or
-                        % offset if we are offseting this time series)
-                        baseline = zeros(size(y)) + y0;
-                    end
-                    if nowrap
-                        obj.hTraceBaseLine(t).XData = x;
-                        obj.hTraceBaseLine(t).YData = baseline;
-                    else
-                        % wrap trace every so many points
-                        [~, wbaseline] = TimeSeriesExtViewer.wrap(x, baseline, wrapNumPts, obj.tsLineOffset);
-                        obj.hTraceBaseLine(t).XData = wx;
-                        obj.hTraceBaseLine(t).YData = wbaseline;
-                    end
-                    obj.hTraceBaseLine(t).Visible = 'on';
+                
+                obj.updateBaseLine(t, x, y0, wrapSegIdx);
+                
+                obj.updateIdealLine(t, x, y, y0, wrapSegIdx);
+                if obj.tsLineOffset == 0
+                    % unique colors for overlaid traces
+                    obj.hTraceIdealLine(t).Color = obj.colors(colorIndex,:);
+                    colorIndex = colorIndex + 1;
                 else
-                    obj.hTraceBaseLine(t).Visible = 'off';
-                    obj.hTraceBaseLine(t).XData = nan;
-                    obj.hTraceBaseLine(t).YData = nan;
+                    % same color for offset traces
+                    obj.hTraceIdealLine(t).Color = obj.colors(2,:);
                 end
-                % ideal
-                if obj.isShowIdeal
-                    try
-                        ideal = obj.ts(t).model.ideal;
-                        [~, ideal] = obj.getResampledTs(zeros(size(ideal)), ideal);
-                        ideal = ideal + y0;
-                    catch
-                        ideal = [];
-                    end
-                else
-                    ideal = [];
-                end
-                if isequal(size(y), size(ideal))
-                    % draw ideal trace on top of data
-                    if nowrap
-                        obj.hTraceIdealLine(t).XData = x;
-                        obj.hTraceIdealLine(t).YData = ideal;
-                    else
-                        % wrap trace every so many points
-                        [~, wideal] = TimeSeriesExtViewer.wrap(x, ideal, wrapNumPts, obj.tsLineOffset);
-                        obj.hTraceIdealLine(t).XData = wx;
-                        obj.hTraceIdealLine(t).YData = wideal;
-                    end
-                    if obj.tsLineOffset == 0
-                        % if we're not offsetting multiple time series,
-                        % give each time series a unique color
-                        obj.hTraceIdealLine(t).Color = obj.colors(colorIndex,:);
-                        colorIndex = colorIndex + 1;
-                    else
-                        % if we are offsetting multiple time series, use
-                        % the same color for all of them
-                        obj.hTraceIdealLine(t).Color = obj.colors(2,:);
-                    end
-                    obj.hTraceIdealLine(t).Visible = 'on';
-                else
-                    obj.hTraceIdealLine(t).Visible = 'off';
-                    obj.hTraceIdealLine(t).XData = nan;
-                    obj.hTraceIdealLine(t).YData = nan;
-                end
-                % histogram
-                nbins = str2num(obj.hHistNumBinsEdit.String);
-                if nowrap
-                    ynn = y(~isnan(y));
-                    yvis = y;
-                else
-                    ynn = wy(~isnan(wy));
-                    yvis = wy;
-                end
-                ylim = minmax(reshape(ynn, 1, []));
-                ylim = ylim + [-1 1] .* (0.1 * diff(ylim));
-                edges = linspace(ylim(1), ylim(2), nbins + 1);
-                centers = (edges(1:end-1) + edges(2:end)) / 2;
-                counts = histcounts(ynn, edges);
-                area = trapz(centers, counts);
-                sqrtCounts = obj.hHistSqrtCountsBtn.Value;
-                if sqrtCounts
-                    counts = sqrt(counts);
-                end
-                % plot histogram of data
-                obj.hHistBar(t).XData = centers;
-                obj.hHistBar(t).YData = counts;
-                obj.hHistBar(t).FaceColor = obj.hTraceLine(t).Color;
-                obj.hHistBar(t).Visible = 'on';
-                % ideal histogram
-                if isequal(size(y), size(ideal))
-                    % plot a GMM fit to data overlaid on the histogram
-                    % based on levels in ideal trace
-                    if numel(centers) < 100
-                        bins = reshape(linspace(edges(1), edges(end), 101), [] ,1);
-                    else
-                        bins = reshape(centers, [], 1);
-                    end
-                    if nowrap
-                        idealnn = ideal(~isnan(ideal));
-                        idealvis = ideal;
-                    else
-                        idealnn = wideal(~isnan(wideal));
-                        idealvis = wideal;
-                    end
-                    ustates = unique(idealnn);
-                    nustates = numel(ustates);
-                    fits = zeros(numel(bins), nustates);
-                    npts = numel(idealnn);
-                    for k = 1:nustates
-                        idx = idealvis == ustates(k);
-                        yk = yvis(idx);
-                        [mu, sigma] = normfit(yk(~isnan(yk)));
-                        weight = double(sum(idx)) / npts * area;
-                        fits(:,k) = weight .* normpdf(bins, mu, sigma);
-                    end
-                    if sqrtCounts
-                        fits = sqrt(fits);
-                    end
-                    bins = repmat(bins, 1, nustates);
-                    bins = [bins; nan(1,nustates)];
-                    fits = [fits; nan(1,nustates)];
-                    obj.hHistIdealLines(t).XData = reshape(fits, [], 1);
-                    obj.hHistIdealLines(t).YData = reshape(bins, [], 1);
-                    obj.hHistIdealLines(t).Color = obj.hTraceIdealLine(t).Color;
-                    obj.hHistIdealLines(t).Visible = 'on';
-                    % indicate # of idealized states in upper right of
-                    % histogram axes
-                    obj.hHistUpperRightText.String = ...
-                        strtrim([obj.hHistUpperRightText.String ' ' num2str(nustates)]);
-                    obj.hHistUpperRightText.Visible = 'on';
-                else
-                    obj.hHistIdealLines(t).Visible = 'off';
-                    obj.hHistIdealLines(t).XData = nan;
-                    obj.hHistIdealLines(t).YData = nan;
-                end
+                
+                obj.updateHistogram(t);
+                
+                % increment offset for next time series
                 if obj.tsLineOffset ~= 0
-                    % increment offset for next time series
-                    if nowrap
+                    if isempty(wrapSegIdx)
                         y0 = y0 + obj.tsLineOffset;
                     else
-                        y0 = y0 + wrapNumSegments * obj.tsLineOffset;
+                        numSegs = numel(wrapSegIdx);
+                        y0 = y0 + numSegs * obj.tsLineOffset;
                     end
                 end
             end
+        end
+        function addOrRemovePlotObjectsToMatchTimeSeries(obj)
+            numTs = numel(obj.ts);
+            % delete unneeded graphics objects
+            if numel(obj.hTraceLine) > numTs
+                delete(obj.hTraceLine(numTs+1:end));
+                delete(obj.hTraceIdealLine(numTs+1:end));
+                delete(obj.hHistBar(numTs+1:end));
+                delete(obj.hHistIdealLines(numTs+1:end));
+            end
+            for t = 1:numTs
+                % create graphics objects for this time series if needed
+                if numel(obj.hTraceLine) < t
+                    obj.hTraceZeroLine(t) = line(obj.hTraceAxes, nan, nan, ...
+                        'LineStyle', '-', 'Color', [0.5 0.5 0.5], ...
+                        'HitTest', 'off', 'PickableParts', 'none', ...
+                        'Visible', 'off');
+                    obj.hTraceLine(t) = plot(obj.hTraceAxes, nan, nan, ...
+                        'LineStyle', '-', ...
+                        'HitTest', 'off', 'PickableParts', 'none', ...
+                        'Visible', 'off');
+                    obj.hTraceBaseLine(t) = line(obj.hTraceAxes, nan, nan, ...
+                        'LineStyle', '--', 'Color', [0 0 0], ...
+                        'HitTest', 'off', 'PickableParts', 'none', ...
+                        'Visible', 'off');
+                    obj.hTraceIdealLine(t) = line(obj.hTraceAxes, nan, nan, ...
+                        'LineStyle', '-', ...
+                        'LineWidth', 1.5, ...
+                        'HitTest', 'off', 'PickableParts', 'none', ...
+                        'Visible', 'off');
+                    obj.hHistBar(t) = barh(obj.hHistAxes, nan, nan, ...
+                        'BarWidth', 1, ...
+                        'LineStyle', 'none', ...
+                        'FaceAlpha', 0.5, ...
+                        'HitTest', 'off', 'PickableParts', 'none', ...
+                        'Visible', 'off');
+                    obj.hHistIdealLines(t) = line(obj.hHistAxes, nan, nan, ...
+                        'LineStyle', '-', ...
+                        'LineWidth', 1.5, ...
+                        'HitTest', 'off', 'PickableParts', 'none', ...
+                        'Visible', 'off');
+                end
+            end
+        end
+        function wrapSegIdx = getWrapSegmentIndices(obj, x)
+            wrapSegIdx = {};
+            if isinf(obj.tsWrapWidth) || x(end) - x(1) <= obj.tsWrapWidth
+                return
+            end
+            i = 1;
+            nx = size(x,1);
+            while i <= nx
+                j = find(x - x(i) > obj.tsWrapWidth, 1) - 1;
+                if j
+                    wrapSegIdx{end+1} = i:j;
+                    i = j + 1;
+                else
+                    wrapSegIdx{end+1} = i:nx;
+                    return
+                end
+            end
+        end
+        function [wx, wy] = getWrappedData(obj, x, y, wrapSegIdx)
+            if ~exist('wrapSegIdx', 'var')
+                wrapSegIdx = obj.getWrapSegmentIndices(x);
+            end
+            numPts = size(y,1);
+            numSegs = numel(wrapSegIdx);
+            wx = nan(numPts + numSegs - 1, 1);
+            wy = wx;
+            for k = 1:numSegs
+                idx = wrapSegIdx{k};
+                wx(idx+(k-1)) = x(idx) - x(idx(1));
+                wy(idx+(k-1)) = y(idx) + (k-1) * obj.tsLineOffset;
+            end
+        end
+        function updateZeroLine(obj, t, x, y0, wrapSegIdx)
+            if ~obj.isShowZero
+                obj.hTraceZeroLine(t).Visible = 'off';
+                obj.hTraceZeroLine(t).XData = nan;
+                obj.hTraceZeroLine(t).YData = nan;
+                return
+            end
+            
+            if isempty(wrapSegIdx)
+                obj.hTraceZeroLine(t).XData = [x(1); x(end)];
+                obj.hTraceZeroLine(t).YData = [y0; y0];
+            else
+                numSegs = numel(wrapSegIdx);
+                obj.hTraceZeroLine(t).XData = repmat([0; obj.tsWrapWidth; nan], numSegs, 1);
+                obj.hTraceZeroLine(t).YData = reshape( ...
+                    repmat([y0; y0; nan], 1, numSegs) ...
+                    + repmat([obj.tsLineOffset; obj.tsLineOffset; nan], 1, numSegs) ...
+                    .* repmat(0:numSegs-1, 3, 1), ...
+                    [], 1);
+            end
+            
+            obj.hTraceZeroLine(t).Visible = 'on';
+        end
+        function updateTraceLine(obj, t, x, y, wrapSegIdx)
+            if isempty(wrapSegIdx)
+                obj.hTraceLine(t).XData = x;
+                obj.hTraceLine(t).YData = y;
+            else
+                [wx, wy] = obj.getWrappedData(x, y, wrapSegIdx);
+                obj.hTraceLine(t).XData = wx;
+                obj.hTraceLine(t).YData = wy;
+            end
+            obj.hTraceLine(t).Visible = 'on';
+        end
+        function updateBaseLine(obj, t, x, y0, wrapSegIdx)
+            if ~obj.isShowBaseline
+                obj.hTraceBaseLine(t).Visible = 'off';
+                obj.hTraceBaseLine(t).XData = nan;
+                obj.hTraceBaseLine(t).YData = nan;
+                return
+            end
+            
+            if obj.isShowRaw
+                % baseline on top of raw data
+                offset = obj.ts(t).offset;
+                if numel(offset) > 1
+                    if obj.sumSamplesN > 1
+                        N = obj.sumSamplesN;
+                        n = floor(double(size(offset,1)) / N);
+                        offset0 = offset;
+                        offset = offset0(1:N:n*N,:);
+                        for k = 2:N
+                            offset = offset + offset0(k:N:n*N,:);
+                        end
+                    end
+                    if obj.downsampleN > 1 || obj.upsampleN > 1
+                        offset = resample(offset, obj.upsampleN, obj.downsampleN);
+                    end
+                end
+                baseline = zeros(size(x)) - offset + y0;
+            else
+                % baselined data will have a baseline at zero (or
+                % offset if we are offseting this time series)
+                baseline = zeros(size(x)) + y0;
+            end
+            
+            if isempty(wrapSegIdx)
+                obj.hTraceBaseLine(t).XData = x;
+                obj.hTraceBaseLine(t).YData = baseline;
+            else
+                [wx, wbaseline] = obj.getWrappedData(x, baseline, wrapSegIdx);
+                obj.hTraceBaseLine(t).XData = wx;
+                obj.hTraceBaseLine(t).YData = wbaseline;
+            end
+            
+            obj.hTraceBaseLine(t).Visible = 'on';
+        end
+        function updateIdealLine(obj, t, x, y, y0, wrapSegIdx)
+            if ~obj.isShowIdeal
+                obj.hTraceIdealLine(t).Visible = 'off';
+                obj.hTraceIdealLine(t).XData = nan;
+                obj.hTraceIdealLine(t).YData = nan;
+                return
+            end
+            
+            try
+                ideal = obj.ts(t).model.ideal;
+                [~, ideal] = obj.getResampledTs(zeros(size(ideal)), ideal);
+                ideal = ideal + y0;
+            catch
+                ideal = [];
+            end
+            
+            if ~isequal(size(y), size(ideal))
+                obj.hTraceIdealLine(t).Visible = 'off';
+                obj.hTraceIdealLine(t).XData = nan;
+                obj.hTraceIdealLine(t).YData = nan;
+                return
+            end
+            
+            if isempty(wrapSegIdx)
+                obj.hTraceIdealLine(t).XData = x;
+                obj.hTraceIdealLine(t).YData = ideal;
+            else
+                [wx, wideal] = obj.getWrappedData(x, ideal, wrapSegIdx);
+                obj.hTraceIdealLine(t).XData = wx;
+                obj.hTraceIdealLine(t).YData = wideal;
+            end
+            
+            obj.hTraceIdealLine(t).Visible = 'on';
+        end
+        function updateHistogram(obj, t)
+            if ~obj.isShowHist
+                return
+            end
+            
+            nbins = str2num(obj.hHistNumBinsEdit.String);
+            y = obj.hTraceLine(t).YData;
+            ynn = y(~isnan(y));
+            ylim = minmax(reshape(ynn, 1, []));
+            ylim = ylim + [-1 1] .* (0.1 * diff(ylim));
+            edges = linspace(ylim(1), ylim(2), nbins + 1);
+            centers = (edges(1:end-1) + edges(2:end)) / 2;
+            counts = histcounts(ynn, edges);
+            area = trapz(centers, counts);
+            sqrtCounts = obj.hHistSqrtCountsBtn.Value;
+            if sqrtCounts
+                counts = sqrt(counts);
+            end
+            obj.hHistBar(t).XData = centers;
+            obj.hHistBar(t).YData = counts;
+            obj.hHistBar(t).FaceColor = obj.hTraceLine(t).Color;
+            obj.hHistBar(t).Visible = 'on';
+            
+            ideal = obj.hTraceIdealLine(t).YData;
+            if ~isequal(size(y), size(ideal))
+                obj.hHistIdealLines(t).Visible = 'off';
+                obj.hHistIdealLines(t).XData = nan;
+                obj.hHistIdealLines(t).YData = nan;
+                return
+            end
+            
+            % plot a GMM fit to data overlaid on the histogram
+            % based on levels in ideal trace
+            if numel(centers) < 100
+                bins = reshape(linspace(edges(1), edges(end), 101), [] ,1);
+            else
+                bins = reshape(centers, [], 1);
+            end
+            idealnn = ideal(~isnan(ideal));
+            ustates = unique(idealnn);
+            nustates = numel(ustates);
+            fits = zeros(numel(bins), nustates);
+            npts = numel(idealnn);
+            for k = 1:nustates
+                idx = ideal == ustates(k);
+                yk = y(idx);
+                [mu, sigma] = normfit(yk(~isnan(yk)));
+                weight = double(sum(idx)) / npts * area;
+                fits(:,k) = weight .* normpdf(bins, mu, sigma);
+            end
+            if sqrtCounts
+                fits = sqrt(fits);
+            end
+            bins = repmat(bins, 1, nustates);
+            bins = [bins; nan(1,nustates)];
+            fits = [fits; nan(1,nustates)];
+            obj.hHistIdealLines(t).XData = reshape(fits, [], 1);
+            obj.hHistIdealLines(t).YData = reshape(bins, [], 1);
+            obj.hHistIdealLines(t).Color = obj.hTraceIdealLine(t).Color;
+            obj.hHistIdealLines(t).Visible = 'on';
+            
+            % indicate # of idealized states in upper right of
+            % histogram axes
+            obj.hHistUpperRightText.String = ...
+                strtrim([obj.hHistUpperRightText.String ' ' num2str(nustates)]);
+            obj.hHistUpperRightText.Visible = 'on';
         end
         function [x, y] = getTsAsShown(obj, t)
             x = obj.ts(t).time;
@@ -941,9 +994,8 @@ classdef TimeSeriesExtViewer < handle
             uimenu(submenu, 'Label', 'Mask All', ...
                 'Separator', 'on', ...
                 'Callback', @(varargin) obj.maskAll());
-            uimenu(submenu, 'Label', 'Clear Mask', ...
-                'Separator', 'on', ...
-                'Callback', @(varargin) obj.clearMask());
+            uimenu(submenu, 'Label', 'Unmask All', ...
+                'Callback', @(varargin) obj.unmaskAll());
             
             submenu = uimenu(menu, 'Label', 'Baseline', ...
                 'Separator', 'on');
@@ -1286,7 +1338,7 @@ classdef TimeSeriesExtViewer < handle
             end
             obj.updateUI();
         end
-        function clearMask(obj)
+        function unmaskAll(obj)
             for t = obj.visibleTsIndices
                 try
                     obj.ts(t).isMasked = false;
