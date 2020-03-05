@@ -26,15 +26,20 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
         % model of time series data (generic struct for flexibility)
         % e.g. Markov model
         model = struct();
+        
+        % idealized data
+        % e.g. from above model
+        ideal = timeseries;
     end
     
     properties (Dependent)
-        time % time array (same size as rawData)
-        data % offset and scaled rawData
+        time % time array (same size as raw.data)
+        data % offset and scaled raw.data
         mask % logical mask array (same size as data)
         maskedData % data with masked points set to nan
         
         % raw timeseries meta data
+        name
         timeUnits
         dataUnits
         timeInfo
@@ -111,6 +116,20 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
             y(this.isMasked) = nan;
         end
         
+        function name = get.name(this)
+            name = this.raw.Name;
+        end
+        function set.name(this, name)
+            this.raw.Name = name;
+        end
+        function editName(this)
+            answer = inputdlg({'Name:'}, 'TimeSeriesExt.name', 1, {char(this.name)});
+            if isempty(answer)
+                return
+            end
+            this.name = answer{1};
+        end
+        
         function units = get.timeUnits(this)
             units = this.raw.TimeInfo.Units;
         end
@@ -123,12 +142,24 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
         function set.dataUnits(this, units)
             this.raw.DataInfo.Units = units;
         end
+        function editDataUnits(this)
+            answer = inputdlg({['Data Units (' char(this.dataUnits) '):'], 'Scale By:'}, ...
+                'TimeSeriesExt.dataUnits', 1, {char(this.dataUnits), '1'});
+            if isempty(answer)
+                return
+            end
+            scaleBy = str2num(answer{2});
+            this.raw.data = this.raw.data .* scaleBy;
+            this.offset = this.offset .* scaleBy;
+            this.ideal.data = this.ideal.data .* scaleBy;
+            this.dataUnits = answer{1};
+        end
         
         function meta = get.timeInfo(this)
             meta = this.raw.TimeInfo;
         end
         function meta = get.dataInfo(this)
-            meta = this.raw.DataInfo.Units;
+            meta = this.raw.DataInfo;
         end
         function set.timeInfo(this, meta)
             this.raw.TimeInfo = meta;
@@ -152,10 +183,10 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
             end
             x0 = this.time;
             y0 = this.maskedData;
-            [ysegs, xsegidxs] = getNonNanSegments(y0);
+            [ysegs, segIdxs] = TimeSeriesExt.getNonNanSegments(y0);
             xsegs = {};
-            for k = 1:numel(xsegidxs)
-                xsegs{k} = x0(xsegidxs{k});
+            for k = 1:numel(segIdxs)
+                xsegs{k} = x0(segIdxs{k});
             end
         end
     end
@@ -168,13 +199,18 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
         function [segments, segmentIndices] = getNonNanSegments(dataWithNan)
             % return cell array of non-nan subarrays
             dataWithNan = reshape(dataWithNan, [], 1);
-            idx = isnan(dataWithNan);
-            segmentLengths = diff(find([1; diff(idx); 1]));
-            segmentStartIndices = [1; cumsum(segmentLengths(1:end-1))];
+            tf = isnan(dataWithNan);
+            segmentLengths = diff(find([1; diff(tf); 1]));
+            segmentStartIndices = [1; 1+cumsum(segmentLengths(1:end-1))];
             segments = mat2cell(dataWithNan, segmentLengths(:));
             % remove nan segments
-            segments(2:2:end) = [];
-            segmentStartIndices(2:2:end) = [];
+            if tf(1)
+                segments(1:2:end) = [];
+                segmentStartIndices(1:2:end) = [];
+            else
+                segments(2:2:end) = [];
+                segmentStartIndices(2:2:end) = [];
+            end
             segmentIndices = {};
             for k = 1:numel(segments)
                 n = length(segments{k});
@@ -201,12 +237,7 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
                 elseif ~any(isMasked)
                     isMasked = false(n,1);
                 else
-                    isMasked0 = isMasked;
-                    isMasked = false(n,N);
-                    for k = 1:N
-                        isMasked(:,k) = isMasked0(k:N:n*N);
-                    end
-                    isMasked = any(isMasked, 2);
+                    isMasked = any(reshape(isMasked(1:n*N), N, n), 1)';
                 end
             end
         end
@@ -246,6 +277,75 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
             end
             ts = resample(ts, x);
             y = ts.Data;
+        end
+
+        function ts = readHEKA(filepath)
+            if ~exist('filepath', 'var') || isempty(filepath)
+                [file, path] = uigetfile('*.*', 'Open HEKA data file.');
+                if isequal(file, 0)
+                    return
+                end
+                filepath = fullfile(path, file);
+            end
+            [path, file, ext] = fileparts(filepath);
+            % load HEKA data
+            try
+                heka = HEKA_Importer(filepath);
+            catch
+                warndlg("!!! Requires package 'HEKA Patchmaster Importer' by Christian Keine. Find in MATLAB's Add-On Explorer.", ...
+                    'HEKA file loader');
+                return
+            end
+            nrecordings = size(heka.RecTable,1);
+            % info for each recording are in the nonempty leaves of dataTree
+            recdata = heka.trees.dataTree(:,end);
+            clip = [];
+            for i = 1:numel(recdata)
+                if isempty(recdata{i})
+                    clip = [clip i];
+                end
+            end
+            recdata(clip) = [];
+            if numel(recdata) ~= nrecordings
+                warndlg('Unexpected data structure. Please report this error.');
+                return
+            end
+            if nrecordings > 1
+                % Ask which recordings to load. Loading multiple recordings is
+                % allowed provided they have the same channels.
+                stimuli = {};
+                for rec = 1:nrecordings
+                    stimuli{rec} = heka.RecTable.Stimulus{rec};
+                end
+                selrec = listdlg('ListString', stimuli, ...
+                    'PromptString', 'Select recordings to load:');
+            else
+                selrec = 1;
+            end
+            nchannels = numel(heka.RecTable.dataRaw{selrec(1)});
+            for i = 2:numel(selrec)
+                if nchannels ~= numel(heka.RecTable.dataRaw{selrec(i)}) ...
+                        || ~isequal(heka.RecTable.ChName{selrec(1)}, heka.RecTable.ChName{selrec(i)})
+                    warndlg('Selected recordings do NOT have the same channels, and cannot be loaded together.');
+                    return
+                end
+            end
+            ts = {};
+            for i = 1:numel(selrec)
+                rec = selrec(i);
+                nsweeps = size(heka.RecTable.dataRaw{rec}{1},2);
+                %npts = size(heka.RecTable.dataRaw{rec}{1},1);
+                ts{i} = repmat(TimeSeriesExt, nsweeps, nchannels);
+                for sweep = 1:nsweeps
+                    for channel = 1:nchannels
+                        ts{i}(sweep,channel).sampleInterval = recdata{rec}.TrXInterval;
+                        ts{i}(sweep,channel).data = heka.RecTable.dataRaw{rec}{channel}(:,sweep);
+                        ts{i}(sweep,channel).timeUnits = string(heka.RecTable.TimeUnit{rec}{channel});
+                        ts{i}(sweep,channel).dataUnits = string(heka.RecTable.ChUnit{rec}{channel});
+                        ts{i}(sweep,channel).name = string(heka.RecTable.ChName{rec}{channel});
+                    end
+                end
+            end
         end
     end
 end
