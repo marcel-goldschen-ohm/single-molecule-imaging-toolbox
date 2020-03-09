@@ -30,6 +30,10 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
         % idealized data
         % e.g. from above model
         ideal = timeseries;
+        
+        % known data (e.g. from simulation)
+        % for comparison with model idealization
+        known = timeseries;
     end
     
     properties (Dependent)
