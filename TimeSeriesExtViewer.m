@@ -56,9 +56,6 @@ classdef TimeSeriesExtViewer < handle
     
     properties (Access = private)
         colors = lines();
-%         dialogPositionWithinUi = [];
-        hROI % for temporary ROI selections (e.g. rectangle range)
-        hDialogPanel % for within UI dialogs
     end
     
     properties (Dependent)
@@ -150,10 +147,6 @@ classdef TimeSeriesExtViewer < handle
             linkaxes([obj.hTraceAxes obj.hHistAxes], 'y');
             
             % other -------------
-            obj.hMenuBtn = uicontrol(obj.hPanel, 'style', 'pushbutton', ...
-                'String', char(hex2dec('2630')), 'Position', [0 0 20 20], ...
-                'Tooltip', 'Projection Menu', ...
-                'Callback', @(varargin) obj.menuBtnDown());
             obj.hTopText = uicontrol(obj.hPanel, 'style', 'text', ...
                 'String', '', 'Position', [0 0 0 20], ...
                 'Visible', 'off');
@@ -194,7 +187,8 @@ classdef TimeSeriesExtViewer < handle
                 'String', '__', 'Position', [0 0 20 20], ...
                 'Tooltip', 'Show Zero Line', ...
                 'Value', 0, ...
-                'Callback', @(varargin) obj.updateUI());
+                'Callback', @(varargin) obj.updateUI(), ...
+                'Visible', 'off');
             obj.hShowBaselineBtn = uicontrol(obj.hPanel, 'style', 'togglebutton', ...
                 'String', char(hex2dec('2505')), 'Position', [0 0 20 20], ...
                 'Tooltip', 'Show Baseline', ...
@@ -223,6 +217,11 @@ classdef TimeSeriesExtViewer < handle
                 'String', '>', 'Position', [0 0 20 20], ...
                 'Tooltip', 'Next Time Series', ...
                 'Callback', @(varargin) obj.next());
+            
+            obj.hMenuBtn = uicontrol(obj.hPanel, 'style', 'pushbutton', ...
+                'String', char(hex2dec('2630')), 'Position', [0 0 20 20], ...
+                'Tooltip', 'Projection Menu', ...
+                'Callback', @(varargin) obj.menuBtnDown());
 
             % layout
             obj.hPanel.SizeChangedFcn = @(varargin) obj.resize();
@@ -463,6 +462,21 @@ classdef TimeSeriesExtViewer < handle
             obj.hApplyFilterBtn.Value = tf;
             obj.updateUI();
         end
+        function toggleShowMasked(obj)
+            obj.isShowMasked = ~obj.isShowMasked;
+        end
+        function toggleShowZero(obj)
+            obj.isShowZero = ~obj.isShowZero;
+        end
+        function toggleShowBaseline(obj)
+            obj.isShowBaseline = ~obj.isShowBaseline;
+        end
+        function toggleShowIdeal(obj)
+            obj.isShowIdeal = ~obj.isShowIdeal;
+        end
+        function toggleApplyFilter(obj)
+            obj.isApplyFilter = ~obj.isApplyFilter;
+        end
         
         function resize(obj)
             %RESIZE Reposition all graphics objects within hPanel.
@@ -498,34 +512,41 @@ classdef TimeSeriesExtViewer < handle
             pos = Utilities.plotboxpos(obj.hTraceAxes);
             x = pos(1); y = pos(2); w = pos(3); h = pos(4);
             
-            % top buttons
+            % menu button
+            bx = margin;
             by = y + h + margin;
-            bx = margin;%x + 35;
             obj.hMenuBtn.Position = [bx by lineh lineh];
+            % autoscale buttons
             bx = x + w - 3*lineh;
             obj.hAutoscaleXBtn.Position = [bx by lineh lineh];
             obj.hAutoscaleYBtn.Position = [bx+lineh by lineh lineh];
             obj.hAutoscaleXYBtn.Position = [bx+2*lineh by lineh lineh];
+            % page buttons
             bx = bx - 5 - 2*lineh;
             obj.hPageLeftBtn.Position = [bx by lineh lineh];
             obj.hPageRightBtn.Position = [bx+lineh by lineh lineh];
+            % toggle buttons
             bx = bx - 5 - 4*lineh;
-            obj.hApplyFilterBtn.Position = [bx by lineh lineh];
-            obj.hShowIdealBtn.Position = [bx+lineh by lineh lineh];
-            obj.hShowBaselineBtn.Position = [bx+2*lineh by lineh lineh];
-            obj.hShowZeroBtn.Position = [bx+3*lineh by lineh lineh];
-            bx = bx - 5 - 2*lineh;
+            obj.hShowMaskedBtn.Position = [bx by lineh lineh];
+            obj.hApplyFilterBtn.Position = [bx+lineh by lineh lineh];
+            obj.hShowIdealBtn.Position = [bx+2*lineh by lineh lineh];
+            obj.hShowBaselineBtn.Position = [bx+3*lineh by lineh lineh];
+%             obj.hShowZeroBtn.Position = [bx+4*lineh by lineh lineh];
+            % raw/baselined/scaled button
+            bx = bx - 5 - lineh;
             obj.hShowRawOrBtn.Position = [bx by lineh lineh];
-            obj.hShowMaskedBtn.Position = [bx+lineh by lineh lineh];
+            % ts nav buttons
             if isvalid(obj.hVisibleTsEdit) && obj.hVisibleTsEdit.Visible == "on"
                 bx = bx - 5 - 4*lineh;
                 obj.hPrevTsBtn.Position = [bx by lineh lineh];
                 obj.hVisibleTsEdit.Position = [bx+lineh by 2*lineh lineh];
                 obj.hNextTsBtn.Position = [bx+3*lineh by lineh lineh];
             end
+            % text above plot
             if obj.hTopText.Visible == "on"
                 obj.hTopText.Position = [x+35 by bx-5-(x+35) lineh];
             end
+            % histogram
             if obj.isShowHist
                 bx = x + w + margin + hw - lineh - 80;
                 obj.hHistNumBinsText.Position = [bx by 30 lineh];
@@ -539,7 +560,6 @@ classdef TimeSeriesExtViewer < handle
                 obj.hHistNumBinsEdit.Visible = 'off';
                 obj.hHistSqrtCountsBtn.Visible = 'off';
             end
-%             obj.dialogPositionWithinUi = [2 by obj.hPrevTsBtn.Position(1)-2-2 lineh];
         end
         
         function updateUI(obj)
@@ -1195,7 +1215,33 @@ classdef TimeSeriesExtViewer < handle
             % display
             submenu = uimenu(menu, 'Label', 'Display Options', ...
                 'Separator', 'on');
+            uimenu(submenu, 'Label', 'Show Raw', ...
+                'Checked', obj.isShowRaw, ...
+                'Callback', @(varargin) obj.showRaw());
+            uimenu(submenu, 'Label', 'Show Baselined', ...
+                'Checked', obj.isShowBaselined, ...
+                'Callback', @(varargin) obj.showBaselined());
+            uimenu(submenu, 'Label', 'Show Baselined and Scaled', ...
+                'Checked', obj.isShowBaselinedAndScaled, ...
+                'Callback', @(varargin) obj.showBaselinedAndScaled());
+            uimenu(submenu, 'Label', 'Show Masked', ...
+                'Separator', 'on', ...
+                'Checked', obj.isShowMasked, ...
+                'Callback', @(varargin) obj.toggleShowMasked());
+            uimenu(submenu, 'Label', 'Apply Filter', ...
+                'Checked', obj.isApplyFilter, ...
+                'Callback', @(varargin) obj.toggleApplyFilter());
+            uimenu(submenu, 'Label', 'Show Ideal', ...
+                'Checked', obj.isShowIdeal, ...
+                'Callback', @(varargin) obj.toggleShowIdeal());
+            uimenu(submenu, 'Label', 'Show Baseline', ...
+                'Checked', obj.isShowBaseline, ...
+                'Callback', @(varargin) obj.toggleShowBaseline());
+            uimenu(submenu, 'Label', 'Show Zero Line', ...
+                'Checked', obj.isShowZero, ...
+                'Callback', @(varargin) obj.toggleShowZero());
             uimenu(submenu, 'Label', 'Set Multi-Line Offset', ...
+                'Separator', 'on', ...
                 'Callback', @(varargin) obj.setTsLineOffsetDialog());
             uimenu(submenu, 'Label', 'Set Data Wrap Width', ...
                 'Callback', @(varargin) obj.setTsWrapWidthDialog());
@@ -1207,8 +1253,6 @@ classdef TimeSeriesExtViewer < handle
             % custom
             submenu = uimenu(menu, 'Label', 'Custom', ...
                 'Separator', 'on');
-            uimenu(submenu, 'Label', 'Fit Capacitive Artifacts', ...
-                'Callback', @(varargin) obj.fitCapacitiveArtifacts());
             uimenu(submenu, 'Label', 'Subtract Capacitive Artifacts', ...
                 'Callback', @(varargin) obj.subtractCapacitiveArtifacts());
         end
@@ -1683,7 +1727,7 @@ classdef TimeSeriesExtViewer < handle
             end
         end
         function drawBaselineNodes(obj)
-            obj.hDialogPanel = uipanel(obj.hPanel, ...
+            hDialogPanel = uipanel(obj.hPanel, ...
                 'BorderType', 'line', ...
                 'AutoResizeChildren', 'off', ...
                 'Units', 'pixels');
@@ -1691,17 +1735,17 @@ classdef TimeSeriesExtViewer < handle
             y = obj.hMenuBtn.Position(2);
             w = 180;
             h = obj.hMenuBtn.Position(4);
-            obj.hDialogPanel.Position = [x y w h];
+            hDialogPanel.Position = [x y w h];
             
-            uicontrol(obj.hDialogPanel, 'style', 'text', ...
+            uicontrol(hDialogPanel, 'style', 'text', ...
                 'String', 'Baseline Nodes', 'Position', [0 0 100 h], ...
                 'BackgroundColor', [0 0 0], ...
                 'ForegroundColor', [1 1 1]);
-            uicontrol(obj.hDialogPanel, 'style', 'pushbutton', ...
+            uicontrol(hDialogPanel, 'style', 'pushbutton', ...
                 'String', 'Cancel', 'Position', [100 0 40 h], ...
                 'BackgroundColor', [1 .6 .6], ...
                 'Callback', @cancel_);
-            uicontrol(obj.hDialogPanel, 'style', 'pushbutton', ...
+            uicontrol(hDialogPanel, 'style', 'pushbutton', ...
                 'String', 'OK', 'Position', [140 0 40 h], ...
                 'BackgroundColor', [.6 .9 .6], ...
                 'Callback', @ok_);
@@ -1709,16 +1753,16 @@ classdef TimeSeriesExtViewer < handle
             t = obj.visibleTsIndices(1);
             originalOffset = obj.ts(t).offset;
             
-            obj.hROI = drawpolyline(obj.hTraceAxes);
+            hROI = drawpolyline(obj.hTraceAxes);
             obj.isShowBaseline = 1;
             roiEvent_();
-            listeners(1) = addlistener(obj.hROI, 'ROIMoved', @roiEvent_);
+            listeners(1) = addlistener(hROI, 'ROIMoved', @roiEvent_);
             
             function roiEvent_(varargin)
                 try
                     t = obj.visibleTsIndices(1);
-                    ptsx = obj.hROI.Position(:,1);
-                    ptsy = obj.hROI.Position(:,2);
+                    ptsx = hROI.Position(:,1);
+                    ptsy = hROI.Position(:,2);
                     baseline = interp1(ptsx, ptsy, obj.ts(t).time, 'makima');
                     if obj.isShowRaw
                         obj.ts(t).offset = -baseline;
@@ -1743,8 +1787,8 @@ classdef TimeSeriesExtViewer < handle
             
             uiwait();
             delete(listeners);
-            delete(obj.hDialogPanel);
-            delete(obj.hROI);
+            delete(hDialogPanel);
+            delete(hROI);
         end
         function editBaselineNodes(obj, numNodesOrNodesXY)
             if ~exist('numNodesOrNodesXY', 'var')
@@ -1781,7 +1825,7 @@ classdef TimeSeriesExtViewer < handle
                 return
             end
             
-            obj.hDialogPanel = uipanel(obj.hPanel, ...
+            hDialogPanel = uipanel(obj.hPanel, ...
                 'BorderType', 'line', ...
                 'AutoResizeChildren', 'off', ...
                 'Units', 'pixels');
@@ -1789,18 +1833,18 @@ classdef TimeSeriesExtViewer < handle
             y = obj.hMenuBtn.Position(2);
             w = 180;
             h = obj.hMenuBtn.Position(4);
-            obj.hDialogPanel.Position = [x y w h];
+            hDialogPanel.Position = [x y w h];
             
-            uicontrol(obj.hDialogPanel, 'style', 'text', ...
+            uicontrol(hDialogPanel, 'style', 'text', ...
                 'String', 'Baseline Nodes', 'Position', [0 0 100 h], ...
                 ... %'HorizontalAlignment', 'right', ...
                 'BackgroundColor', [0 0 0], ...
                 'ForegroundColor', [1 1 1]);
-            uicontrol(obj.hDialogPanel, 'style', 'pushbutton', ...
+            uicontrol(hDialogPanel, 'style', 'pushbutton', ...
                 'String', 'Cancel', 'Position', [100 0 40 h], ...
                 'BackgroundColor', [1 .6 .6], ...
                 'Callback', @cancel_);
-            uicontrol(obj.hDialogPanel, 'style', 'pushbutton', ...
+            uicontrol(hDialogPanel, 'style', 'pushbutton', ...
                 'String', 'OK', 'Position', [140 0 40 h], ...
                 'BackgroundColor', [.6 .9 .6], ...
                 'Callback', @ok_);
@@ -1808,22 +1852,22 @@ classdef TimeSeriesExtViewer < handle
             t = obj.visibleTsIndices(1);
             originalOffset = obj.ts(t).offset;
             
-            obj.hROI = images.roi.Polyline(obj.hTraceAxes, 'Position', nodesXY);
+            hROI = images.roi.Polyline(obj.hTraceAxes, 'Position', nodesXY);
             obj.isShowBaseline = 1;
             roiEvent_();
-            listeners(1) = addlistener(obj.hROI, 'ROIMoved', @roiEvent_);
+            listeners(1) = addlistener(hROI, 'ROIMoved', @roiEvent_);
             
             function roiEvent_(varargin)
                 try
-                    ptsx = obj.hROI.Position(:,1);
-                    ptsy = obj.hROI.Position(:,2);
+                    ptsx = hROI.Position(:,1);
+                    ptsy = hROI.Position(:,2);
                     t = obj.visibleTsIndices(1);
                     baseline = interp1(ptsx, ptsy, obj.ts(t).time, 'makima');
                     if obj.isShowRaw
                         obj.ts(t).offset = -baseline;
                     else
                         obj.ts(t).offset = obj.ts(t).offset - baseline;
-                        obj.hROI.Position(:,2) = 0;
+                        hROI.Position(:,2) = 0;
                     end
                     obj.updateUI();
                 catch err
@@ -1843,174 +1887,10 @@ classdef TimeSeriesExtViewer < handle
             
             uiwait();
             delete(listeners);
-            delete(obj.hDialogPanel);
-            delete(obj.hROI);
+            delete(hDialogPanel);
+            delete(hROI);
         end
-        function baselineSplineGMM(obj, numGauss, numSplineSegments, hScatter)
-%             try
-%             t = obj.visibleTsIndices(1);
-%             xdata = reshape(obj.hTraceLine(t).XData, [], 1);
-%             ydata = reshape(obj.hTraceLine(t).YData, [], 1);
-%             gmm = fitgmdist(ydata, numGauss);
-%             [~, k0] = min(gmm.mu);
-%             P = posterior(gmm, ydata); % P(i,j) = prob ydata(i) in gauss j
-%             [~,k] = max(P, [], 2);
-%             idx = k == k0;
-%             xdata0 = xdata(idx);
-%             ydata0 = ydata(idx);
-%             pp = splinefit(xdata0, ydata0, numSplineSegments);
-%             time = obj.ts(t).time;
-%             if obj.isShowRaw
-%                 obj.ts(t).offset = -ppval(pp, time);
-%             else
-%                 obj.ts(t).offset = obj.ts(t).offset - ppval(pp, time);
-%             end
-%             obj.updateUI();
-%             if exist('hScatter', 'var') && isvalid(hScatter)
-%                 hScatter.XData = obj.hTraceLine(t).XData;
-%                 hScatter.YData = obj.hTraceLine(t).YData;
-%                 cdata = zeros(length(hScatter.YData), 3);
-%                 cmap = lines(numGauss);
-%                 for i = 1:numGauss
-%                     idx = find(k == i);
-%                     cdata(idx,:) = repmat(cmap(i,:), length(idx), 1);
-%                 end
-%                 hScatter.CData = cdata;
-%             end
-%             catch e
-%                 e.message
-%             end
-        end
-        function baselineSplineGMMDialog(obj)
-%             hScatter = scatter(obj.hTraceAxes, [], [], 'filled');
-%             
-%             dlg = dialog('Name', 'GMM Baseline Spline');
-%             dlg.Position(3) = 300;
-%             dlg.Position(4) = 110;
-%             uicontrol(dlg, 'style', 'text', ...
-%                 'String', '# Gaussians ', 'Position', [10 80 140 20], ...
-%                 'HorizontalAlignment', 'right');
-%             numGaussEdit = uicontrol(dlg, 'style', 'edit', ...
-%                 'String', '2', 'Position', [150 80 140 20]);
-%             uicontrol(dlg, 'style', 'text', ...
-%                 'String', '# Spline Segments ', 'Position', [10 60 140 20], ...
-%                 'HorizontalAlignment', 'right');
-%             numSegmentsEdit = uicontrol(dlg, 'style', 'edit', ...
-%                 'String', '3', 'Position', [150 60 140 20]);
-%             uicontrol(dlg, 'style', 'pushbutton', ...
-%                 'String', 'Close', 'Position', [100 10 60 40], ...
-%                 'Callback', 'close(gcf)');
-%             uicontrol(dlg, 'style', 'pushbutton', ...
-%                 'String', 'Fit', 'Position', [160 10 60 40], ...
-%                 'Callback', @(varargin) obj.baselineSplineGMM( ...
-%                 str2num(numGaussEdit.String), ...
-%                 str2num(numSegmentsEdit.String), ...
-%                 hScatter));
-%             
-%             uiwait(dlg);
-%             delete(hScatter);
-        end
-        function baselineToSelectedGaussLevel(obj)
-%             obj.hDialogPanel = uipanel(obj.hPanel, ...
-%                 'BorderType', 'line', ...
-%                 'AutoResizeChildren', 'off', ...
-%                 'Units', 'pixels');
-%             x = 2;%obj.hMenuBtn.Position(1) + 2 * obj.hMenuBtn.Position(3);
-%             y = obj.hMenuBtn.Position(2);
-%             w = 380;
-%             h = obj.hMenuBtn.Position(4);
-%             obj.hDialogPanel.Position = [x y w h];
-%             
-%             uicontrol(obj.hDialogPanel, 'style', 'text', ...
-%                 'String', 'Baseline To Gauss Level', 'Position', [0 0 150 h], ...
-%                 ... %'HorizontalAlignment', 'right', ...
-%                 'BackgroundColor', [0 0 0], ...
-%                 'ForegroundColor', [1 1 1]);
-%             uicontrol(obj.hDialogPanel, 'style', 'text', ...
-%                 'String', '# Spline Segments:', 'Position', [150 0 100 h], ...
-%                 'HorizontalAlignment', 'right');
-%             numSegsEdit = uicontrol(obj.hDialogPanel, 'style', 'edit', ...
-%                 'String', '10', 'Position', [250 0 50 h], ...
-%                 'Callback', @(varargin) roiEvent_());
-%             uicontrol(obj.hDialogPanel, 'style', 'pushbutton', ...
-%                 'String', 'Fit', 'Position', [300 0 40 h], ...
-%                 'Callback', @fit_);
-%             uicontrol(obj.hDialogPanel, 'style', 'pushbutton', ...
-%                 'String', 'Done', 'Position', [340 0 40 h], ...
-%                 'BackgroundColor', [.6 .9 .6], ...
-%                 'Callback', @ok_);
-%             busyText = uicontrol(obj.hDialogPanel, 'style', 'text', ...
-%                 'String', 'busy...', 'Position', [300 0 40 h], ...
-%                 'ForegroundColor', [1 0 0], ...
-%                 'Visible', 'off');
-% %             uicontrol(obj.hDialogPanel, 'style', 'pushbutton', ...
-% %                 'String', 'Cancel', 'Position', [msgWidth+160 0 40 h], ...
-% %                 'BackgroundColor', [1 .6 .6], ...
-% %                 'Callback', 'uiresume()');
-%             
-%             obj.hROI = drawrectangle(obj.hTraceAxes, ...
-%                 'LineWidth', 1);
-%             obj.hROI.Position(1) = obj.hTraceAxes.XLim(1);
-%             obj.hROI.Position(3) = diff(obj.hTraceAxes.XLim);
-%             obj.isShowBaseline = 1;
-%             roiEvent_();
-%             listeners(1) = addlistener(obj.hROI, 'ROIMoved', @roiEvent_);
-%             
-%             function roiEvent_(varargin)
-%                 obj.hROI.Position(1) = obj.hTraceAxes.XLim(1);
-%                 obj.hROI.Position(3) = diff(obj.hTraceAxes.XLim);
-%             end
-%             function fit_(varargin)
-%                 try
-%                     busyText.Visible = 'on';
-%                     obj.hROI.Position(1) = obj.hTraceAxes.XLim(1);
-%                     obj.hROI.Position(3) = diff(obj.hTraceAxes.XLim);
-%                     ymin = obj.hROI.Position(2);
-%                     ymax = obj.hROI.Position(2) + obj.hROI.Position(4);
-%                     xdata = obj.hTraceLine.XData;
-%                     ydata = obj.hTraceLine.YData;
-%                     idx = ydata < ymin;
-%                     xdata(idx) = [];
-%                     ydata(idx) = [];
-%                     idx = ydata > ymax;
-%                     xdata(idx) = [];
-%                     ydata(idx) = [];
-%                     [mu, sigma] = normfit(ydata);
-%                     % center ROI on mu
-%                     if ymax - mu <= mu - ymin
-%                         ymin = mu - (ymax - mu);
-%                     else
-%                         ymax = mu + (mu - ymin);
-%                     end
-%                     obj.hROI.Position(2) = ymin;
-%                     obj.hROI.Position(4) = ymax - ymin;
-%                     drawnow;
-%                     % fit spline to level
-%                     numSegments = str2num(numSegsEdit.String);
-%                     pp = splinefit(xdata, ydata, numSegments);
-%                     t = obj.visibleTsIndices(1);
-%                     if obj.isShowRaw
-%                         obj.ts(t).offset = -ppval(pp, obj.ts(t).time);
-%                     else
-%                         obj.ts(t).offset = obj.ts(t).offset - ppval(pp, obj.ts(t).time);
-%                         obj.hROI.Position(2) = -(ymax - ymin) / 2;
-%                     end
-%                     busyText.Visible = 'off';
-%                     % show fit
-%                     obj.updateUI();
-%                 catch
-%                 end
-%             end
-%             function ok_(varargin)
-%                 uiresume();
-%             end
-%             
-%             uiwait();
-%             delete(listeners);
-%             delete(obj.hDialogPanel);
-%             delete(obj.hROI);
-        end
-        function baselineSlidingLognormalPeak(obj, windowPts, stepPts)%, numSplineSegments)
+        function baselineSlidingLognormalPeak(obj, windowPts, stepPts)
             if ~exist('windowPts', 'var') || ~exist('stepPts', 'var')
                 answer = inputdlg({'Window (pts):', 'Step (pts):'}, ...
                     'DISC', 1, {'1000', '100'});
@@ -2317,7 +2197,7 @@ classdef TimeSeriesExtViewer < handle
             end
         end
         
-        function fitGMM(obj, numGauss)
+        function fitGMM___(obj, numGauss)
             if ~exist('numGauss', 'var')
                 answer = inputdlg({'# Gaussians:'}, ...
                     'Fit GMM', 1, {'2'});
@@ -2343,7 +2223,7 @@ classdef TimeSeriesExtViewer < handle
             
             close(wb);
         end
-        function fitSKM(obj, numStates)
+        function fitSKM___(obj, numStates)
         end
         
         function subtractCapacitiveArtifacts(obj)
@@ -2491,42 +2371,14 @@ classdef TimeSeriesExtViewer < handle
             end
         end
         
-        function OLD_baselineFlat(obj)
-            xrange = obj.selectXRange('Baseline Region:');
-            for t = obj.visibleTsIndices
-                try
-                    x = obj.ts(t).time;
-                    idx = (x >= xrange(1)) & (x <= xrange(2));
-                    obj.ts(t).offset = -mean(obj.ts(t).rawData(idx));
-                catch
-                end
-            end
-            obj.updateUI();
-        end
-        function OLD_baselineLinearTwoRegion(obj)
-            xrange1 = obj.selectXRange('Baseline Region 1/2:');
-            xrange2 = obj.selectXRange('Baseline Region 2/2:');
-%             x1 = mean(xrange1);
-%             x2 = mean(xrange2);
-            for t = obj.visibleTsIndices
-                try
-                    x = obj.ts(t).time;
-                    idx1 = (x >= xrange1(1)) & (x <= xrange1(2));
-                    idx2 = (x >= xrange2(1)) & (x <= xrange2(2));
-                    idx = union(idx1, idx2);
-                    lx = x(idx);
-                    ly = y(idx);
-                    fit = polyfit(lx, ly, 1);
-                    obj.ts(t).offset = -polyval(fit, x);
-%                     y1 = mean(obj.ts(t).rawData(idx1));
-%                     y2 = mean(obj.ts(t).rawData(idx2));
-%                     m = (y2 - y1) / (x2 - x1);
-%                     b = y1 - m * x1;
-%                     obj.ts(t).offset = -(m .* x + b);
-                catch
-                end
-            end
-            obj.updateUI();
+        function ts = appendSimulatedHMM(obj)
+            [x, y, ideal] = TimeSeriesExtViewer.simulateHMM();
+            ts = TimeSeriesExt;
+            ts.data = y;
+            ts.time = x;
+            ts.known.data = ideal;
+            ts.known.time = x;
+            obj.ts = [obj.ts ts];
         end
     end
     
@@ -2590,11 +2442,84 @@ classdef TimeSeriesExtViewer < handle
                 + ampFall2 .* exp(-(x - x0) ./ tauFall2)) + constant;
             y(x < x0) = constant;
         end
-%         function sse = capacitiveTransientSSE(params, x, y)
-%             fit = TimeSeriesExtViewer.capacitiveTransient(params, x);
-%             idx = ~isnan(fit);
-%             sse = sum((y(idx) - fit(idx)).^2);
-%         end
+        
+        function [x, y, ideal] = simulateHMM(nruns, nseries, npts, dt, p0, Q, nsites)
+            if nargin < 6
+                % dialog
+                answer = inputdlg( ...
+                    {'# runs', '# series/run', '# samples/series', 'sample interval (sec)', ...
+                    'starting probabilities', 'transition rates (/sec)', ...
+                    'emission means', 'emission sigmas', ...
+                    '# sites/series'}, ...
+                    'Simulation', 1, ...
+                    {'1', '1', '1000', '0.1', ...
+                    '0.5, 0.5', '0, 1; 1, 0', ...
+                    '0, 1', '0.25, 0.33', ...
+                    '1'});
+                if isempty(answer)
+                    return
+                end
+                nruns = str2num(answer{1});
+                nseries = str2num(answer{2});
+                npts = str2num(answer{3});
+                dt = str2num(answer{4});
+                p0 = str2num(answer{5});
+                Q = str2num(answer{6});
+                mu = str2num(answer{7});
+                sigma = str2num(answer{8});
+            end
+            % transition matrix
+            Q = Q - diag(diag(Q));
+            Q = Q - diag(sum(Q, 2));
+            nstates = size(Q, 1);
+            A = ones(nstates, nstates) - exp(-Q .* dt); 
+            if isempty(p0)
+                % equilibrium
+                S = [Q ones(nstates, 1)];
+                p0 = ones(1, nstates) / (S * (S'));        
+            end
+            for k = 1:nstates
+                pd(k) = makedist('Normal', 'mu', mu(k), 'sigma', sigma(k));
+            end
+            nsites = str2num(answer{9});
+            % model sanity
+            p0 = p0 ./ sum(p0);
+            A = A - diag(diag(A));
+            A = A + diag(1 - sum(A, 2));
+            % allocate memory
+            x = reshape([0:npts-1] .* dt, [], 1);
+            y = zeros(npts, nseries, nsites, nruns);
+            ideal = zeros(npts, nseries, nsites, nruns);
+            % states
+            states = zeros(npts, nseries, nsites, nruns, 'uint8');
+            cump0 = cumsum(p0);
+            cumA = cumsum(A, 2);
+            rn = rand(npts, nseries, nsites, nruns);
+            for r = 1:nruns
+                for i = 1:nseries
+                    for j = 1:nsites
+                        t = 1;
+                        states(t,i,j,r) = find(rn(t,i,j,r) <= cump0, 1);
+                        for t = 2:npts
+                            states(t,i,j,r) = find(rn(t,i,j,r) <= cumA(states(t-1,i,j,r),:), 1);
+                        end
+                    end
+                end
+            end
+            % noisy & ideal
+            for k = 1:numel(pd)
+                idx = states == k;
+                y(idx) = random(pd(k), nnz(idx), 1);
+                ideal(idx) = mean(pd(k));
+            end
+            % add sites together
+            if nsites > 1
+                y = sum(y, 3);
+                ideal = sum(ideal, 3);
+            end
+            y = squeeze(y);
+            ideal = squeeze(ideal);
+        end
     end
 end
 
