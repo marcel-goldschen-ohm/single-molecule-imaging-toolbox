@@ -9,15 +9,23 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
     
     properties
         % raw data is MATLAB timeseries object
+        % raw.data is TxN for T samples and N series
+        % raw.time is [] or Tx1 or TxN
         raw = timeseries;
         
         % optionally store sample interval instead of explicit time array
-        sampleInterval = 1;
+        sampleInterval = [];
         
-        % offset, scaling and masking of raw data
-        offset = 0; % 1x1 OR size(raw.data)
-        scale = 1; % 1x1 OR size(raw.data)
-        isMasked = false; % 1x1 OR size(raw.data)
+        % data = (raw.data + offset - artifact) .* scale
+        offset = 0; % 1x1 or Tx1 or TxN
+        artifact = 0; % 1x1 OR Tx1 or TxN
+        scale = 1; % 1x1 or Tx1 or TxN
+        
+        % masked data points
+        isMasked = false; % 1x1 or Tx1 or TxN
+        
+        % meta data
+        meta = struct();
         
         % map of named selections (logical or indices)
         % (built in constructor)
@@ -37,9 +45,12 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
     end
     
     properties (Dependent)
-        time % time array (same size as raw.data)
-        data % offset and scaled raw.data
-        mask % logical mask array (same size as data)
+        time % TxN sample time points
+        data % (raw.data + offset - artifact) .* scale
+        numSamples
+        numSeries
+        baseline % -offset
+        mask % TxN logical mask array
         maskedData % data with masked points set to nan
         
         % raw timeseries meta data
@@ -57,6 +68,47 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
             this.selections = containers.Map();
         end
         
+        function x = get.time(this)
+            T = size(this.raw.data, 1);
+            N = size(this.raw.data, 2);
+            if numel(this.sampleInterval) == 1
+                x = (0:T-1)' .* ones(1, N) .* this.sampleInterval;
+            elseif numel(this.sampleInterval) == N
+                x = (0:T-1)' .* this.sampleInterval;
+            elseif mod(N, numel(this.sampleInterval)) == 0
+                reps = N / numel(this.sampleInterval);
+                x = (0:T-1)' .* repmat(this.sampleInterval, 1, reps);
+            elseif ~isempty(this.sampleInterval)
+                reps = ceil(double(N) / numel(this.sampleInterval));
+                si = repmat(this.sampleInterval, 1, reps);
+                x = (0:T-1)' .* si(1:N);
+            elseif isempty(this.raw.time)
+                x = (0:T-1)' .* ones(1, N);
+            elseif isequal(size(this.raw.time), size(this.raw.data))
+                x = this.raw.time;
+            elseif size(this.raw.time, 1) == T
+                reps = ceil(double(N) / size(this.raw.time, 2));
+                x = repmat(this.raw.time, 1, reps);
+                x = x(:,1:N);
+            else
+                x = [];
+            end
+        end
+        function y = get.data(this)
+            y = this.raw.data;
+            if isempty(y)
+                return
+            end
+            if any(this.offset ~= 0)
+                y = y + this.offset;
+            end
+            if any(this.artifact ~= 0)
+                y = y - this.artifact;
+            end
+            if any(this.scale ~= 1)
+                y = y .* this.scale;
+            end
+        end
         function set.time(this, x)
             if isempty(x)
                 this.sampleInterval = 1;
@@ -72,32 +124,24 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
             this.offset = 0;
             this.scale = 1;
         end
-        function x = get.time(this)
-            if numel(this.sampleInterval) == 1
-                x = (0:size(this.raw.data, 1)-1)' .* this.sampleInterval;
-            else
-                x = this.raw.time;
-                if isempty(x)
-                    x = (0:size(this.raw.data, 1)-1)';
-                end
-            end
+        
+        function T = get.numSamples(this)
+            T = size(this.raw.data,1);
         end
-        function y = get.data(this)
-            y = this.raw.data;
-            if isempty(y)
-                return
-            end
-            if any(this.offset ~= 0)
-                y = y + this.offset;
-            end
-            if any(this.scale ~= 1)
-                y = y .* this.scale;
-            end
+        function N = get.numSeries(this)
+            N = size(this.raw.data,2);
+        end
+        
+        function y0 = get.baseline(this)
+            y0 = -this.offset;
+        end
+        function set.baseline(this, y0)
+            this.offset = -y0;
         end
         
         function mask = get.mask(this)
             if isempty(this.isMasked)
-                mask = [];
+                mask = false(size(this.raw.data));
             elseif numel(this.isMasked) == 1
                 if this.isMasked
                     mask = true(size(this.raw.data));
@@ -105,7 +149,12 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
                     mask = false(size(this.raw.data));
                 end
             else
-                mask = this.isMasked; % Should be same size as raw.data.
+                T = size(this.raw.data, 1);
+                N = size(this.raw.data, 2);
+                nrows = ceil(double(T) / size(this.isMasked, 1));
+                ncols = ceil(double(N) / size(this.isMasked, 2));
+                mask = repmat(this.isMasked, nrows, ncols);
+                mask = mask(1:T,1:N);
             end
         end
         function y = get.maskedData(this)
@@ -117,7 +166,7 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
                 y = nan(size(y));
                 return
             end
-            y(this.isMasked) = nan;
+            y(this.mask) = nan;
         end
         
         function name = get.name(this)
@@ -173,7 +222,7 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
         end
         
         % cell array of nonmasked data segments
-        % !!! currenlty ONLY works for 1-D arrays
+        % !!! currently ONLY works for 1-D arrays
         function [xsegs, ysegs] = getNonMaskedDataSegments(this)
             if ~any(this.isMasked)
                 xsegs = {this.time};
@@ -196,10 +245,6 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
     end
     
     methods (Static)
-%         function this = loadobj(s)
-%             this = Utilities.loadobj(TimeSeriesExt, s);
-%         end
-        
         function [segments, segmentIndices] = getNonNanSegments(dataWithNan)
             % return cell array of non-nan subarrays
             dataWithNan = reshape(dataWithNan, [], 1);
@@ -283,7 +328,7 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
             y = ts.Data;
         end
 
-        function ts = readHEKA(filepath)
+        function ts = importHEKA(filepath)
             if ~exist('filepath', 'var') || isempty(filepath)
                 [file, path] = uigetfile('*.*', 'Open HEKA data file.');
                 if isequal(file, 0)
@@ -295,7 +340,8 @@ classdef (ConstructOnLoad) TimeSeriesExt < handle
             % load HEKA data
             try
                 heka = HEKA_Importer(filepath);
-            catch
+            catch err
+                disp(err);
                 warndlg("!!! Requires package 'HEKA Patchmaster Importer' by Christian Keine. Find in MATLAB's Add-On Explorer.", ...
                     'HEKA file loader');
                 return
