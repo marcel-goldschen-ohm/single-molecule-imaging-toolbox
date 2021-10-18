@@ -229,28 +229,26 @@ classdef Utilities < handle
             registration = [];
 
             % launch MATLAB's registrationEstimator app
-            hFigures = findall(groot, 'type', 'Figure');
             registrationEstimator(movingImage, fixedImage);
-            hNewFigures = findall(groot, 'type', 'Figure');
-            hAppFigure = hNewFigures(~ismember(hNewFigures, hFigures));
-            if isempty(hAppFigure)
-                return
-            end
+
+            % get list of base workspace variables
+            vars = evalin('base', 'who()');
 
             % inform user that they need to export the alignment
-            msgbox({ ...
+            h = msgbox({ ...
                 '1. Align images', ...
                 '2. Export to workspace (name whatever)', ...
                 '3. Close registration estimator window', ...
                 '4. Last exported alignment will be returned' ...
+                '5. !!! Close this message box ONLY after all of the above'
                 });
-
-            % get list of base workspace variables
-            vars = evalin('base', 'who()');
+            
             % block until registrationEstimator uifigure is closed
-            waitfor(hAppFigure);
+            waitfor(h);
+            
             % get list of base workspace variables
             newvars = evalin('base', 'who()');
+            
             % find new base workspace variables (i.e. those exported from
             % registrationEstimator app)
             newvars = newvars(~ismember(newvars, vars));
